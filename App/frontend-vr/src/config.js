@@ -16,7 +16,7 @@ export const CONFIG = {
     ORCHESTRATOR: {
         color: '#FFD700',
         radius: 2,
-        position: { x: 0, y: 2, z: -8 },
+        position: { x: 0, y: 3, z: -8 },
         pulseSpeed: 2000,
         particleCount: 200
     },

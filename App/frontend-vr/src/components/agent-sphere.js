@@ -95,14 +95,14 @@ AFRAME.registerComponent('agent-sphere', {
         const position = calculateOrbitPosition(
             this.angle + this.time,
             data.orbitRadius,
-            2 + Math.sin(this.time * 2) * 0.3
+            5 + Math.sin(this.time * 2) * 0.3
         );
         
         // Posición relativa al orchestrator
         const orchestratorPos = CONFIG.ORCHESTRATOR.position;
         this.el.setAttribute('position', {
             x: orchestratorPos.x + position.x,
-            y: position.y,
+            y: orchestratorPos.y + (position.y - 3),
             z: orchestratorPos.z + position.z
         });
         
