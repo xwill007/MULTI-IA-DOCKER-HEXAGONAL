@@ -76,7 +76,7 @@ AFRAME.registerComponent('query-panel', {
         
         const sendButton = this.createButton(
             'SEND CUSTOM QUERY',
-            { x: 0, y: -data.height/2 + 0.3, z: 0.01 },
+            { x: 0, y: -data.height/2 + 2.0, z: 0.01 },
             () => this.sendCustomQuery(),
             CONFIG.ORCHESTRATOR.color
         );

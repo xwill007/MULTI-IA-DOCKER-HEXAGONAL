@@ -118,11 +118,29 @@ class APIClient {
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(1500);
+            
+            // Generate relevant mock response
+            let response = '';
+            const lowerQuery = query.toLowerCase();
+            
+            if (lowerQuery.includes('como te llamas') || lowerQuery.includes('tu nombre') || lowerQuery.includes('who are you')) {
+                response = 'Soy el Orquestador Multi-IA, un sistema de coordinación de agentes inteligentes. Trabajo con agentes especializados (Code Analyzer, Data Analyst, Conversation Agent) para procesar tus solicitudes de manera eficiente.';
+            } else if (lowerQuery.includes('code quality') || lowerQuery.includes('calidad')) {
+                response = 'El análisis de calidad de código incluye: estructura del proyecto, adherencia a mejores prácticas, métricas de complejidad, y detección de code smells. Los agentes especializados pueden revisar múltiples lenguajes.';
+            } else if (lowerQuery.includes('documentation') || lowerQuery.includes('documentación')) {
+                response = 'Puedo generar documentación automática incluyendo: diagramas de arquitectura, comentarios de API, guías de uso, y especificaciones técnicas. Los agentes analizan el código fuente para extraer información relevante.';
+            } else if (lowerQuery.includes('security') || lowerQuery.includes('seguridad')) {
+                response = 'El análisis de seguridad cubre: inyección SQL, XSS, CSRF, gestión insegura de credenciales, dependencias vulnerables, y configuraciones incorrectas. Se utilizan múltiples agentes especializados.';
+            } else {
+                response = `He procesado tu consulta: "${query}". En modo producción, coordinaré múltiples agentes IA especializados para analizar y responder de manera integral. Actualmente en modo MOCK para desarrollo.`;
+            }
+            
             const result = {
                 query: query,
-                response: `Mock response for: ${query}`,
+                response: response,
                 timestamp: new Date().toISOString(),
-                agents_used: ['agent-001', 'agent-002']
+                agents_used: ['Code Analyzer', 'Data Analyst', 'Conversation Agent'],
+                mode: 'mock'
             };
             console.log('[APIClient] Mock query result:', result);
             return result;

@@ -266,15 +266,97 @@ class VRApp {
             }
         }
         
+        // Show processing message
+        this.showSimpleNotification('Processing query...', 'info');
+        
         // Send query through state manager
         try {
             const result = await this.stateManager.sendQuery(query);
-            this.showSimpleNotification('Query sent successfully', 'success');
+            
+            // Show result
+            if (result && result.response) {
+                this.showQueryResult(query, result.response);
+            } else {
+                this.showSimpleNotification('Query processed successfully', 'success');
+            }
+            
             console.log('[VRApp] Query result:', result);
         } catch (error) {
-            this.showSimpleNotification('Failed to send query', 'error');
+            this.showSimpleNotification('Failed to send query: ' + error.message, 'error');
             console.error('[VRApp] Query error:', error);
         }
+    }
+    
+    /**
+     * Show query result in VR
+     */
+    showQueryResult(query, response) {
+        // Remove previous result if exists
+        const oldResult = document.querySelector('#query-result');
+        if (oldResult) {
+            oldResult.parentNode.removeChild(oldResult);
+        }
+        
+        // Create result panel
+        const resultPanel = document.createElement('a-entity');
+        resultPanel.setAttribute('id', 'query-result');
+        resultPanel.setAttribute('position', '0 2.5 -6');
+        
+        // Background
+        const bg = document.createElement('a-plane');
+        bg.setAttribute('width', 5);
+        bg.setAttribute('height', 3);
+        bg.setAttribute('color', '#1A1A1A');
+        bg.setAttribute('opacity', 0.95);
+        resultPanel.appendChild(bg);
+        
+        // Query text (question)
+        const queryText = document.createElement('a-text');
+        queryText.setAttribute('value', `Q: ${query}`);
+        queryText.setAttribute('align', 'center');
+        queryText.setAttribute('position', '0 1.2 0.01');
+        queryText.setAttribute('width', 4.5);
+        queryText.setAttribute('color', '#FFD700');
+        queryText.setAttribute('wrap-count', 60);
+        resultPanel.appendChild(queryText);
+        
+        // Response text (answer)
+        const responseText = document.createElement('a-text');
+        responseText.setAttribute('value', `A: ${response}`);
+        responseText.setAttribute('align', 'left');
+        responseText.setAttribute('position', '-2.2 0.5 0.01');
+        responseText.setAttribute('width', 4.5);
+        responseText.setAttribute('color', '#FFFFFF');
+        responseText.setAttribute('wrap-count', 60);
+        resultPanel.appendChild(responseText);
+        
+        // Close button
+        const closeButton = document.createElement('a-plane');
+        closeButton.setAttribute('width', 1.5);
+        closeButton.setAttribute('height', 0.3);
+        closeButton.setAttribute('position', '0 -1.2 0.01');
+        closeButton.setAttribute('color', '#F44336');
+        closeButton.setAttribute('class', 'clickable');
+        resultPanel.appendChild(closeButton);
+        
+        const closeText = document.createElement('a-text');
+        closeText.setAttribute('value', 'CLOSE');
+        closeText.setAttribute('align', 'center');
+        closeText.setAttribute('position', '0 -1.2 0.02');
+        closeText.setAttribute('color', '#FFFFFF');
+        closeText.setAttribute('width', 1.4);
+        resultPanel.appendChild(closeText);
+        
+        // Close on click
+        closeButton.addEventListener('click', () => {
+            resultPanel.parentNode.removeChild(resultPanel);
+        });
+        
+        // Add to scene
+        this.scene.appendChild(resultPanel);
+        
+        // Success notification
+        this.showSimpleNotification('Response received!', 'success');
     }
     
     /**
