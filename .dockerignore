@@ -1,0 +1,38 @@
+# Keep Docker build context small
+# General
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Node / frontend
+node_modules/
+App/frontend-vr/node_modules/
+App/frontend-vr/dist/
+App/frontend-vr/.vite/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# Logs and caches
+logs/
+cache/
+coverage/
+
+# Local AI models (do not send to Docker context)
+ollama/
+models/
+**/models/**
+**/ollama/**
+
+# Misc
+*.tmp
+*.bak

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Multi-IA Orchestrator VR</title>
+    <meta name="description" content="Orquestador de Agentes IA en Realidad Virtual">
+    
+    <!-- A-Frame -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+    <script src="https://unpkg.com/aframe-extras@7.1.0/dist/aframe-extras.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            transition: opacity 0.5s;
+        }
+        
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .status-text {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        
+        #connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #connection-status.connected {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+        }
+        
+        #connection-status.disconnected {
+            background: rgba(244, 67, 54, 0.9);
+            color: white;
+        }
+        
+        #connection-status.checking {
+            background: rgba(255, 152, 0, 0.9);
+            color: white;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: white;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div class="status-text">Cargando experiencia VR...</div>
+    </div>
+    
+    <!-- Connection Status -->
+    <div id="connection-status" class="checking">
+        <div class="status-dot"></div>
+        <span id="status-text">Verificando conexión...</span>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene 
+        background="color: #000000"
+        fog="type: exponential; color: #000; density: 0.1"
+        loading-screen="enabled: false">
+        
+        <!-- Assets -->
+        <a-assets>
+            <!-- Preload assets here -->
+        </a-assets>
+        
+        <!-- Environment -->
+        <a-entity 
+            environment="preset: starry; dressingAmount: 100; ground: flat; groundColor: #0a0a1a; groundColor2: #1a1a2e">
+        </a-entity>
+        
+        <!-- Lighting -->
+        <a-entity light="type: ambient; intensity: 0.5"></a-entity>
+        <a-entity light="type: directional; intensity: 0.8; castShadow: true" position="2 4 2"></a-entity>
+        <a-entity light="type: point; intensity: 1; distance: 50; decay: 2" position="0 10 0" color="#FFD700"></a-entity>
+        
+        <!-- Orchestrator Central (Hub) -->
+        <a-entity 
+            id="orchestrator"
+            orchestrator-hub
+            position="0 6 -8">
+        </a-entity>
+        
+        <!-- Agents Container (Orbiting Spheres) -->
+        <a-entity id="agents-container"></a-entity>
+        
+        <!-- UI Panels Container -->
+        <a-entity id="ui-panels">
+            <!-- Query Panel -->
+            <a-entity 
+                id="query-panel"
+                query-panel
+                position="4.5 2 -5"
+                visible="true">
+            </a-entity>
+            
+            <!-- Agent Creator Panel -->
+            <a-entity 
+                id="agent-creator"
+                agent-creator
+                position="-3 2 -5"
+                visible="false">
+            </a-entity>
+        </a-entity>
+        
+        <!-- Status Messages -->
+        <a-entity id="status-messages" position="0 3 -5"></a-entity>
+        
+        <!-- Camera Rig -->
+        <a-entity id="camera-rig" position="0 1.6 0">
+            <a-entity 
+                id="camera" 
+                camera 
+                look-controls="pointerLockEnabled: false"
+                wasd-controls="acceleration: 20"
+                position="0 0 0">
+                
+                <!-- Cursor/Raycaster -->
+                <a-entity 
+                    cursor="fuse: true; fuseTimeout: 1500"
+                    position="0 0 -1"
+                    geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.02"
+                    material="color: #FFD700; shader: flat; opacity: 0.8"
+                    raycaster="objects: .clickable, .interactive"
+                    animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1"
+                    animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 1500; from: 1 1 1; to: 0.5 0.5 0.5"
+                    animation__mouseleave="property: scale; startEvents: mouseleave; easing: easeInCubic; dur: 500; to: 1 1 1">
+                </a-entity>
+                
+                <!-- Hands for VR controllers -->
+                <a-entity id="leftHand" 
+                    oculus-touch-controls="hand: left"
+                    vive-controls="hand: left"
+                    hand-controls="hand: left">
+                </a-entity>
+                <a-entity id="rightHand" 
+                    oculus-touch-controls="hand: right"
+                    vive-controls="hand: right"
+                    hand-controls="hand: right">
+                </a-entity>
+            </a-entity>
+        </a-entity>
+        
+        <!-- Ground -->
+        <a-plane 
+            position="0 0 0" 
+            rotation="-90 0 0" 
+            width="100" 
+            height="100" 
+            color="#1a1a2e"
+            opacity="0.15"
+            transparent="true"
+            shadow="receive: true"
+            material="shader: flat">
+        </a-plane>
+    </a-scene>
+
+    <!-- App Script -->
+    <script type="module" src="/src/app.js"></script>
+</body>
+</html>
