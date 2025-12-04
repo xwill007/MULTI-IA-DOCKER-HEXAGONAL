@@ -258,11 +258,14 @@ class VRApp {
     async handleQuerySubmit(query) {
         console.log('[VRApp] Query submitted:', query);
         
-        // Pulse orchestrator
+        // Pulse orchestrator and start timer
         if (this.orchestratorHub && this.orchestratorHub.components['orchestrator-hub']) {
             const component = this.orchestratorHub.components['orchestrator-hub'];
             if (component.pulse) {
                 component.pulse();
+            }
+            if (component.startTimer) {
+                component.startTimer();
             }
         }
         
@@ -273,9 +276,30 @@ class VRApp {
         try {
             const result = await this.stateManager.sendQuery(query);
             
-            // Show result
-            if (result && result.response) {
-                this.showQueryResult(query, result.response);
+            // Route results to spheres and orchestrator hub
+            if (result) {
+                // Update orchestrator hub
+                const orch = document.querySelector('#orchestrator');
+                if (orch && orch.components['orchestrator-hub']) {
+                    const finalText = result.final_response || result.orchestrator_response || result.response;
+                    orch.components['orchestrator-hub'].updateResponse(finalText);
+                }
+
+                // Update each agent sphere with response time
+                if (Array.isArray(result.agents_responses)) {
+                    result.agents_responses.forEach((ar) => {
+                        const all = document.querySelectorAll('[agent-sphere]');
+                        all.forEach(el => {
+                            const comp = el.components['agent-sphere'];
+                            if (comp && (comp.data.agentId === ar.agent_id || comp.data.agentName === ar.agent_name)) {
+                                comp.updateResponse(ar.response || ar.error || '', ar.response_time);
+                            }
+                        });
+                    });
+                }
+                
+                // Show summary panel
+                this.showQueryResult(query, result);
             } else {
                 this.showSimpleNotification('Query processed successfully', 'success');
             }
@@ -284,57 +308,130 @@ class VRApp {
         } catch (error) {
             this.showSimpleNotification('Failed to send query: ' + error.message, 'error');
             console.error('[VRApp] Query error:', error);
+        } finally {
+            // Stop timer
+            if (this.orchestratorHub && this.orchestratorHub.components['orchestrator-hub']) {
+                const component = this.orchestratorHub.components['orchestrator-hub'];
+                if (component.stopTimer) {
+                    component.stopTimer();
+                }
+            }
         }
     }
     
     /**
-     * Show query result in VR
+     * Show query result in VR with individual agent responses and synthesis
      */
-    showQueryResult(query, response) {
+    showQueryResult(query, result) {
         // Remove previous result if exists
         const oldResult = document.querySelector('#query-result');
         if (oldResult) {
             oldResult.parentNode.removeChild(oldResult);
         }
         
-        // Create result panel
+        // Create result panel container
         const resultPanel = document.createElement('a-entity');
         resultPanel.setAttribute('id', 'query-result');
-        resultPanel.setAttribute('position', '0 2.5 -6');
+        resultPanel.setAttribute('position', '-4 3 -7');
         
-        // Background
-        const bg = document.createElement('a-plane');
-        bg.setAttribute('width', 5);
-        bg.setAttribute('height', 3);
-        bg.setAttribute('color', '#1A1A1A');
-        bg.setAttribute('opacity', 0.95);
-        resultPanel.appendChild(bg);
+        let yOffset = 0;
+        const panelWidth = 3.5;
+        const panelSpacing = 0.3;
         
-        // Query text (question)
-        const queryText = document.createElement('a-text');
-        queryText.setAttribute('value', `Q: ${query}`);
-        queryText.setAttribute('align', 'center');
-        queryText.setAttribute('position', '0 1.2 0.01');
-        queryText.setAttribute('width', 4.5);
-        queryText.setAttribute('color', '#FFD700');
-        queryText.setAttribute('wrap-count', 60);
-        resultPanel.appendChild(queryText);
+        // Query header
+        const queryHeader = this.createResultSection(
+            'QUERY',
+            query,
+            { x: 0, y: yOffset, z: 0 },
+            panelWidth,
+            '#FFD700'
+        );
+        resultPanel.appendChild(queryHeader);
+        yOffset -= 1.5;
         
-        // Response text (answer)
-        const responseText = document.createElement('a-text');
-        responseText.setAttribute('value', `A: ${response}`);
-        responseText.setAttribute('align', 'left');
-        responseText.setAttribute('position', '-2.2 0.5 0.01');
-        responseText.setAttribute('width', 4.5);
-        responseText.setAttribute('color', '#FFFFFF');
-        responseText.setAttribute('wrap-count', 60);
-        resultPanel.appendChild(responseText);
+        // Orchestrator response
+        if (result.orchestrator_response || result.response) {
+            const orchResponse = result.orchestrator_response || result.response;
+            const orchPanel = this.createResultSection(
+                'ORCHESTRATOR',
+                orchResponse,
+                { x: 0, y: yOffset, z: 0 },
+                panelWidth,
+                '#FFD700'
+            );
+            resultPanel.appendChild(orchPanel);
+            yOffset -= 2.0;
+        }
+        
+        // Individual agent responses
+        if (result.agents_responses && result.agents_responses.length > 0) {
+            const agentsTitle = document.createElement('a-text');
+            agentsTitle.setAttribute('value', '=== AGENT RESPONSES ===');
+            agentsTitle.setAttribute('align', 'center');
+            agentsTitle.setAttribute('position', `0 ${yOffset} 0.01`);
+            agentsTitle.setAttribute('width', panelWidth);
+            agentsTitle.setAttribute('color', '#4A90E2');
+            resultPanel.appendChild(agentsTitle);
+            yOffset -= 0.5;
+            
+            result.agents_responses.forEach((agentResp, index) => {
+                const agentPanel = this.createResultSection(
+                    agentResp.agent_name || `Agent ${index + 1}`,
+                    agentResp.response || agentResp.error || 'No response',
+                    { x: 0, y: yOffset, z: 0 },
+                    panelWidth,
+                    agentResp.error ? '#F44336' : CONFIG.AGENTS.colors[agentResp.model] || '#4A90E2'
+                );
+                resultPanel.appendChild(agentPanel);
+                yOffset -= 1.8;
+            });
+        }
+        
+        // Final synthesis
+        if (result.final_response && result.final_response !== result.orchestrator_response) {
+            yOffset -= 0.3;
+            const synthesisPanel = this.createResultSection(
+                'FINAL SYNTHESIS',
+                result.final_response,
+                { x: 0, y: yOffset, z: 0 },
+                panelWidth,
+                '#4CAF50'
+            );
+            resultPanel.appendChild(synthesisPanel);
+            yOffset -= 2.0;
+        }
+        
+        // Reasoning (if available)
+        if (result.reasoning) {
+            yOffset -= 0.2;
+            const reasoningPanel = this.createResultSection(
+                'REASONING',
+                result.reasoning,
+                { x: 0, y: yOffset, z: 0 },
+                panelWidth,
+                '#9B59B6'
+            );
+            resultPanel.appendChild(reasoningPanel);
+            yOffset -= 1.5;
+        }
+        
+        // Processing time
+        if (result.processing_time) {
+            const timeText = document.createElement('a-text');
+            timeText.setAttribute('value', `Processing time: ${result.processing_time}s`);
+            timeText.setAttribute('align', 'center');
+            timeText.setAttribute('position', `0 ${yOffset - 0.3} 0.01`);
+            timeText.setAttribute('width', panelWidth);
+            timeText.setAttribute('color', '#888888');
+            resultPanel.appendChild(timeText);
+            yOffset -= 0.5;
+        }
         
         // Close button
         const closeButton = document.createElement('a-plane');
         closeButton.setAttribute('width', 1.5);
         closeButton.setAttribute('height', 0.3);
-        closeButton.setAttribute('position', '0 -1.2 0.01');
+        closeButton.setAttribute('position', `0 ${yOffset - 0.3} 0.01`);
         closeButton.setAttribute('color', '#F44336');
         closeButton.setAttribute('class', 'clickable');
         resultPanel.appendChild(closeButton);
@@ -342,7 +439,7 @@ class VRApp {
         const closeText = document.createElement('a-text');
         closeText.setAttribute('value', 'CLOSE');
         closeText.setAttribute('align', 'center');
-        closeText.setAttribute('position', '0 -1.2 0.02');
+        closeText.setAttribute('position', `0 ${yOffset - 0.3} 0.02`);
         closeText.setAttribute('color', '#FFFFFF');
         closeText.setAttribute('width', 1.4);
         resultPanel.appendChild(closeText);
@@ -357,6 +454,47 @@ class VRApp {
         
         // Success notification
         this.showSimpleNotification('Response received!', 'success');
+    }
+    
+    /**
+     * Create a result section with title and content
+     */
+    createResultSection(title, content, position, width, color) {
+        const section = document.createElement('a-entity');
+        section.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
+        
+        // Background
+        const bg = document.createElement('a-plane');
+        const contentLines = Math.ceil(content.length / 80);
+        const height = Math.min(Math.max(contentLines * 0.15 + 0.5, 1.0), 2.5);
+        bg.setAttribute('width', width);
+        bg.setAttribute('height', height);
+        bg.setAttribute('color', '#1A1A1A');
+        bg.setAttribute('opacity', 0.9);
+        section.appendChild(bg);
+        
+        // Title
+        const titleText = document.createElement('a-text');
+        titleText.setAttribute('value', title);
+        titleText.setAttribute('align', 'center');
+        titleText.setAttribute('position', `0 ${height/2 - 0.2} 0.01`);
+        titleText.setAttribute('width', width - 0.2);
+        titleText.setAttribute('color', color);
+        titleText.setAttribute('font', 'roboto');
+        section.appendChild(titleText);
+        
+        // Content
+        const contentText = document.createElement('a-text');
+        contentText.setAttribute('value', content);
+        contentText.setAttribute('align', 'left');
+        contentText.setAttribute('position', `${-width/2 + 0.1} ${height/2 - 0.5} 0.01`);
+        contentText.setAttribute('width', width - 0.3);
+        contentText.setAttribute('color', '#FFFFFF');
+        contentText.setAttribute('wrap-count', Math.floor(width * 20));
+        contentText.setAttribute('baseline', 'top');
+        section.appendChild(contentText);
+        
+        return section;
     }
     
     /**

@@ -10,6 +10,7 @@ import httpx
 import asyncio
 from datetime import datetime
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +58,9 @@ class CreateAgentRequest(BaseModel):
     model: str
     capabilities: List[str] = []
 
+# Ollama endpoint - usar variable de entorno o default a contenedor Docker
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+
 # In-memory storage (temporal)
 agents_db: Dict[str, Agent] = {
     "agent-001": Agent(
@@ -65,7 +69,7 @@ agents_db: Dict[str, Agent] = {
         model="codellama",
         status="active",
         capabilities=["code_analysis", "quality_check", "refactoring"],
-        endpoint="http://localhost:11434"
+        endpoint=OLLAMA_BASE_URL
     ),
     "agent-002": Agent(
         id="agent-002",
@@ -73,7 +77,7 @@ agents_db: Dict[str, Agent] = {
         model="mistral",
         status="active",
         capabilities=["data_analysis", "statistics", "visualization"],
-        endpoint="http://localhost:11434"
+        endpoint=OLLAMA_BASE_URL
     ),
     "agent-003": Agent(
         id="agent-003",
@@ -81,12 +85,9 @@ agents_db: Dict[str, Agent] = {
         model="llama3.2",
         status="active",
         capabilities=["conversation", "general_knowledge", "coordination"],
-        endpoint="http://localhost:11434"
+        endpoint=OLLAMA_BASE_URL
     )
 }
-
-# Ollama client
-OLLAMA_BASE_URL = "http://localhost:11434"
 
 # Health check
 @app.get("/health")
@@ -189,7 +190,9 @@ async def get_orchestrator_response(query: str) -> str:
 Responde de manera clara, concisa y profesional."""
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Timeout más largo para la primera carga del modelo
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
@@ -207,11 +210,11 @@ Responde de manera clara, concisa y profesional."""
                 data = response.json()
                 return data.get("response", "").strip()
             else:
-                logger.warning(f"Ollama returned status {response.status_code}")
+                logger.warning(f"Ollama returned status {response.status_code}: {response.text}")
                 return f"[Orquestador] Basándome en mi análisis de '{query}', puedo coordinar agentes especializados para una respuesta completa."
                 
     except Exception as e:
-        logger.error(f"Error calling Ollama: {e}")
+        logger.error(f"Error calling Ollama at {OLLAMA_BASE_URL}: {type(e).__name__}: {e}")
         return f"[Orquestador] Análisis inicial de '{query}' - consultando agentes especializados..."
 
 async def query_agents(query: str) -> List[Dict[str, Any]]:
@@ -247,6 +250,7 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
     """
     Consulta a un agente individual usando Ollama
     """
+    start_time = asyncio.get_event_loop().time()
     logger.info(f"Querying agent: {agent.name} ({agent.model})")
     
     # System prompt específico por tipo de agente
@@ -259,7 +263,9 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
     system_prompt = system_prompts.get(agent.model, "Eres un asistente especializado.")
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Timeout más largo para permitir carga inicial del modelo
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 f"{agent.endpoint}/api/generate",
                 json={
@@ -277,25 +283,31 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
                 data = response.json()
                 agent_response = data.get("response", "").strip()
             else:
-                agent_response = f"[{agent.name}] No disponible"
+                logger.warning(f"Agent {agent.name} returned status {response.status_code}: {response.text[:200]}")
+                agent_response = f"[{agent.name}] No disponible (HTTP {response.status_code})"
+            
+            response_time = asyncio.get_event_loop().time() - start_time
             
             return {
                 "agent_id": agent.id,
                 "agent_name": agent.name,
                 "model": agent.model,
                 "response": agent_response,
-                "status": "success",
-                "capabilities": agent.capabilities
+                "status": "success" if response.status_code == 200 else "error",
+                "capabilities": agent.capabilities,
+                "response_time": round(response_time, 2)
             }
             
     except Exception as e:
-        logger.error(f"Error querying {agent.name}: {e}")
+        response_time = asyncio.get_event_loop().time() - start_time
+        logger.error(f"Error querying {agent.name} at {agent.endpoint}: {type(e).__name__}: {e}")
         return {
             "agent_id": agent.id,
             "agent_name": agent.name,
             "model": agent.model,
-            "response": f"[Error consultando {agent.name}]",
-            "status": "error"
+            "response": f"[Error: {type(e).__name__}]",
+            "status": "error",
+            "response_time": round(response_time, 2)
         }
 
 def synthesize_responses(

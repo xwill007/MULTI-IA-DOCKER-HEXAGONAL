@@ -59,6 +59,32 @@ AFRAME.registerComponent('agent-sphere', {
         modelLabel.setAttribute('color', modelColor);
         modelLabel.setAttribute('opacity', 0.8);
         el.appendChild(modelLabel);
+
+        // Panel de respuesta del agente (doble cara)
+        const responsePanel = document.createElement('a-entity');
+        
+        // Fondo (visible por ambos lados)
+        const responseBg = document.createElement('a-plane');
+        responseBg.setAttribute('width', 2.2);
+        responseBg.setAttribute('height', 0.8);
+        responseBg.setAttribute('position', '0 -1.0 0');
+        responseBg.setAttribute('color', '#111111');
+        responseBg.setAttribute('opacity', 0.85);
+        responseBg.setAttribute('side', 'double');
+        responsePanel.appendChild(responseBg);
+
+        // Texto (visible por ambos lados)
+        const responseText = document.createElement('a-text');
+        responseText.setAttribute('value', '');
+        responseText.setAttribute('align', 'center');
+        responseText.setAttribute('position', '0 -1.0 0.01');
+        responseText.setAttribute('color', '#FFFFFF');
+        responseText.setAttribute('width', 2.0);
+        responseText.setAttribute('wrap-count', 36);
+        responseText.setAttribute('side', 'double');
+        responsePanel.appendChild(responseText);
+
+        el.appendChild(responsePanel);
         
         // Calcular ángulo inicial de órbita
         this.angle = (data.orbitIndex / data.orbitTotal) * Math.PI * 2;
@@ -70,6 +96,8 @@ AFRAME.registerComponent('agent-sphere', {
         this.label = label;
         this.modelLabel = modelLabel;
         this.modelColor = modelColor;
+        this.responsePanel = responsePanel;
+        this.responseText = responseText;
         
         // Event handlers
         el.addEventListener('click', this.onClick.bind(this));
@@ -95,7 +123,7 @@ AFRAME.registerComponent('agent-sphere', {
         const position = calculateOrbitPosition(
             this.angle + this.time,
             data.orbitRadius,
-            5 + Math.sin(this.time * 2) * 0.3
+           6 + Math.sin(this.time * 2) * 0.3
         );
         
         // Posición relativa al orchestrator
@@ -106,8 +134,8 @@ AFRAME.registerComponent('agent-sphere', {
             z: orchestratorPos.z + position.z
         });
         
-        // Rotación suave
-        this.el.object3D.rotation.y = this.time * 0.5;
+        // Rotación suave (lenta para facilitar lectura)
+        this.el.object3D.rotation.y = this.time * 0.15;
     },
     
     updateStatusRing: function(ring, status) {
@@ -145,6 +173,24 @@ AFRAME.registerComponent('agent-sphere', {
             });
         } else {
             this.sphere.removeAttribute('animation__glow');
+        }
+    },
+
+    // Actualizar texto de respuesta en la esfera
+    updateResponse: function(text, responseTime) {
+        if (!this.responseText) return;
+        const content = (text || '').trim();
+        const shown = content.length > 0 ? content.slice(0, 140) : '';
+        const timeInfo = responseTime ? `\n[${responseTime}s]` : '';
+        const fullText = shown + timeInfo;
+        
+        // Actualizar texto (visible por ambos lados con side=double)
+        this.responseText.setAttribute('value', fullText);
+        
+        // Actualizar label con tiempo si existe
+        if (responseTime && this.label) {
+            const currentName = this.data.agentName;
+            this.label.setAttribute('value', `${currentName} (${responseTime}s)`);
         }
     },
     

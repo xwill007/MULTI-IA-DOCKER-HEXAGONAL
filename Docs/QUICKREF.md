@@ -207,14 +207,23 @@ curl http://localhost:8000/docs
 
 ---
 
-## ✅ Checklist Antes de Implementar
+## ✅ Checklist de Implementación
 
-- [ ] Leer REQUIREMENTS.md completo
-- [ ] Entender arquitectura hexagonal
-- [ ] Revisar principios SOLID
-- [ ] Conocer especialización de agentes
-- [ ] Verificar estructura de directorios
-- [ ] Entender patrones aplicados
+Estado actual (completado):
+- [x] Docker stack con Ollama y FastAPI levantados
+- [x] Frontend VR operativo (`http://localhost:3000`)
+- [x] Timeout frontend a 3 minutos y backoff de reintentos
+- [x] Panel Orchestrator: respuesta general + temporizador visible
+- [x] Agentes: paneles de respuesta con tiempos individuales
+- [x] Rotaciones ralentizadas para lectura cómoda
+- [x] Panel del Orchestrator ampliado (ancho y wrap)
+- [x] `.gitignore` y `.dockerignore` para evitar subir modelos/caches
+
+Pendiente próximo:
+- [ ] Persistencia de conversación (`conversation_id`) y reenvío desde frontend
+- [ ] Mejorar notificaciones (duración y estados)
+- [ ] Colorear tiempos por agente (verde/amarillo/rojo)
+- [ ] Documentar endpoints y formato de respuesta
 
 ---
 

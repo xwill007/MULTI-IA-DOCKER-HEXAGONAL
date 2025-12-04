@@ -5,8 +5,8 @@ import CONFIG from '../config.js';
  */
 AFRAME.registerComponent('query-panel', {
     schema: {
-        width: { type: 'number', default: 4 },
-        height: { type: 'number', default: 2.5 },
+        width: { type: 'number', default: 2 },
+        height: { type: 'number', default: 1.25 },
         visible: { type: 'boolean', default: true }
     },
     
@@ -58,9 +58,7 @@ AFRAME.registerComponent('query-panel', {
         el.appendChild(inputText);
         
         const predefinedQueries = [
-            'Analyze code quality',
-            'Generate documentation',
-            'Find security issues'
+            'Cuéntame un chiste'
         ];
         
         const queryButtons = [];
@@ -104,7 +102,7 @@ AFRAME.registerComponent('query-panel', {
         }
     },
     
-    createButton: function(label, position, onClick, color = '#2196F3') {
+    createButton: function(label, position, onClick, color = '#21f33d') {
         const button = document.createElement('a-entity');
         
         const bg = document.createElement('a-plane');

@@ -7,8 +7,8 @@ class APIClient {
     constructor() {
         this.baseURL = CONFIG.API_BASE_URL;
         this.timeout = CONFIG.API_TIMEOUT;
-        this.retryAttempts = CONFIG.API_RETRY_ATTEMPTS;
-        this.retryDelay = CONFIG.API_RETRY_DELAY;
+        this.retryAttempts = CONFIG.RETRY_ATTEMPTS || 3;
+        this.retryDelay = CONFIG.RETRY_DELAY || 2000;
         this.connected = false;
         this.listeners = new Map();
         
@@ -156,8 +156,16 @@ class APIClient {
             });
             
             const data = await response.json();
-            console.log('[APIClient] Query result:', data);
-            return data;
+            console.log('[APIClient] Query response:', data);
+            // Return full result with all agent responses
+            return {
+                orchestrator_response: data.orchestrator_response,
+                agents_responses: data.agents_responses || [],
+                final_response: data.final_response || data.response,
+                reasoning: data.reasoning,
+                processing_time: data.processing_time,
+                response: data.final_response || data.response // backward compatibility
+            };
         } catch (error) {
             console.error('[APIClient] Failed to send query:', error);
             this.emit('error', error.message);
@@ -203,7 +211,8 @@ class APIClient {
         } catch (error) {
             if (attempt < this.retryAttempts) {
                 console.log(`[APIClient] Retry attempt ${attempt}/${this.retryAttempts}`);
-                await this.simulateDelay(this.retryDelay);
+                const backoff = this.retryDelay * attempt;
+                await this.simulateDelay(backoff);
                 return this.fetchWithRetry(url, options, attempt + 1);
             }
             throw error;

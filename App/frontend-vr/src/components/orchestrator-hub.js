@@ -24,12 +24,12 @@ AFRAME.registerComponent('orchestrator-hub', {
         sphere.setAttribute('segments-width', 32);
         el.appendChild(sphere);
         
-        // Animación de rotación
+        // Animación de rotación (lenta para facilitar lectura)
         sphere.setAttribute('animation__rotate', {
             property: 'rotation',
             to: '0 360 0',
             loop: true,
-            dur: 20000,
+            dur: 60000,
             easing: 'linear'
         });
         
@@ -72,6 +72,43 @@ AFRAME.registerComponent('orchestrator-hub', {
         this.sphere = sphere;
         this.ring = ring;
         this.title = title;
+
+        // Panel de respuesta central (debajo del orchestrator, doble cara)
+        const responseBg = document.createElement('a-plane');
+        responseBg.setAttribute('width', 7.5);
+        responseBg.setAttribute('height', 1.25);
+        responseBg.setAttribute('position', `0 ${-data.radius - 2.5} 0`);
+        responseBg.setAttribute('color', '#1A1A1A');
+        responseBg.setAttribute('opacity', 0.9);
+        responseBg.setAttribute('side', 'double');
+        el.appendChild(responseBg);
+
+        const responseText = document.createElement('a-text');
+        responseText.setAttribute('value', '');
+        responseText.setAttribute('align', 'center');
+        responseText.setAttribute('position', `0 ${-data.radius - 2.5} 0.01`);
+        responseText.setAttribute('width', 7.2);
+        responseText.setAttribute('color', '#FFFFFF');
+        responseText.setAttribute('wrap-count', 96);
+        responseText.setAttribute('side', 'double');
+        el.appendChild(responseText);
+
+        this.responseText = responseText;
+        this.responseBg = responseBg;
+        
+        // Timer text para mostrar tiempo transcurrido
+        const timerText = document.createElement('a-text');
+        timerText.setAttribute('value', '');
+        timerText.setAttribute('align', 'center');
+        timerText.setAttribute('position', `0 ${-data.radius - 0.8} 0.02`);
+        timerText.setAttribute('width', 3);
+        timerText.setAttribute('color', '#FFD700');
+        timerText.setAttribute('font', 'roboto');
+        el.appendChild(timerText);
+        
+        this.timerText = timerText;
+        this.timerInterval = null;
+        this.startTime = null;
     },
     
     /**
@@ -115,6 +152,67 @@ AFRAME.registerComponent('orchestrator-hub', {
                 loop: 3,
                 easing: 'easeInOutQuad'
             });
+        }
+    }
+    ,
+    /**
+     * Actualiza la respuesta mostrada en el hub
+     */
+    updateResponse: function(text) {
+        if (!this.responseText) return;
+        const content = (text || '').trim();
+        const shown = content.length > 0 ? content.slice(0, 220) : '';
+        this.responseText.setAttribute('value', shown);
+    },
+    
+    /**
+     * Inicia el contador de tiempo
+     */
+    startTimer: function() {
+        if (!this.timerText) return;
+        
+        this.startTime = Date.now();
+        this.timerText.setAttribute('value', 'Tiempo: 0s');
+        
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+        }
+        
+        this.timerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            this.timerText.setAttribute('value', `Tiempo: ${elapsed}s`);
+            
+            // Cambiar color según tiempo transcurrido
+            if (elapsed > 120) {
+                this.timerText.setAttribute('color', '#F44336'); // Rojo después de 2 min
+            } else if (elapsed > 60) {
+                this.timerText.setAttribute('color', '#FF9800'); // Naranja después de 1 min
+            } else {
+                this.timerText.setAttribute('color', '#FFD700'); // Amarillo inicial
+            }
+        }, 1000);
+    },
+    
+    /**
+     * Detiene el contador de tiempo
+     */
+    stopTimer: function() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        if (this.timerText && this.startTime) {
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            this.timerText.setAttribute('value', `Completado en ${elapsed}s`);
+            this.timerText.setAttribute('color', '#4CAF50'); // Verde al completar
+            
+            // Limpiar después de 5 segundos
+            setTimeout(() => {
+                if (this.timerText) {
+                    this.timerText.setAttribute('value', '');
+                }
+            }, 5000);
         }
     }
 });
