@@ -5,7 +5,7 @@ import CONFIG from '../config.js';
  */
 AFRAME.registerComponent('query-panel', {
     schema: {
-        width: { type: 'number', default: 2 },
+        width: { type: 'number', default: 3 },
         height: { type: 'number', default: 1.25 },
         visible: { type: 'boolean', default: true }
     },
@@ -235,8 +235,9 @@ AFRAME.registerComponent('query-panel', {
         text.setAttribute('value', label);
         text.setAttribute('align', 'center');
         text.setAttribute('position', '0 0 0.01');
-        text.setAttribute('color', '#FFFFFF');
-        text.setAttribute('width', buttonWidth - 0.2);
+        text.setAttribute('color', '#000000');
+        text.setAttribute('width', buttonWidth - 0.4);
+        text.setAttribute('wrap-count', 30);
         button.appendChild(text);
         
         button.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
