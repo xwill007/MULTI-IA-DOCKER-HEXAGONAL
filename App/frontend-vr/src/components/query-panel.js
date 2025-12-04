@@ -45,6 +45,19 @@ AFRAME.registerComponent('query-panel', {
         el.appendChild(sendButton);
         this.buttons.push(sendButton);
         
+        // Crear elemento de estado
+        const statusText = document.createElement('a-text');
+        statusText.setAttribute('value', '');
+        statusText.setAttribute('align', 'center');
+        statusText.setAttribute('position', `0 -1 0.01`);
+        statusText.setAttribute('color', '#888888');
+        statusText.setAttribute('width', data.width - 0.4);
+        statusText.setAttribute('wrap-count', 50);
+        el.appendChild(statusText);
+        
+        this.statusText = statusText;
+        this.queryButtons = queryButtons;
+        
         // Agregar listener de mouse global para detectar clicks en 3D
         this.addMouseClickListener();
     },
