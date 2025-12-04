@@ -145,23 +145,31 @@ async def process_query(request: QueryRequest):
     
     try:
         # 1. Respuesta del orquestador (razonamiento propio)
+        logger.info("Step 1: Getting orchestrator response...")
         orchestrator_response = await get_orchestrator_response(request.query)
+        logger.info(f"Orchestrator response received: {orchestrator_response[:100] if orchestrator_response else 'EMPTY'}...")
         
         # 2. Consultar agentes si está habilitado
         agents_responses = []
         if request.use_agents and len(agents_db) > 0:
+            logger.info("Step 2: Querying agents...")
             agents_responses = await query_agents(request.query)
+            logger.info(f"Agents responses: {len(agents_responses)} responses received")
+        else:
+            logger.info("Step 2: Skipping agents (use_agents=False or no agents)")
         
-        # 3. Sintetizar respuestas
-        final_response, reasoning = synthesize_responses(
+        # 3. Sintetizar respuestas con IA (el orquestador valida y analiza)
+        logger.info("Step 3: AI-powered synthesis - orchestrator validating responses...")
+        final_response, reasoning = await synthesize_responses_with_ai(
             request.query,
             orchestrator_response,
             agents_responses
         )
+        logger.info(f"Synthesis complete. Final response length: {len(final_response)}")
         
         processing_time = asyncio.get_event_loop().time() - start_time
         
-        return QueryResponse(
+        response_obj = QueryResponse(
             query=request.query,
             orchestrator_response=orchestrator_response,
             agents_responses=agents_responses,
@@ -171,8 +179,11 @@ async def process_query(request: QueryRequest):
             processing_time=round(processing_time, 3)
         )
         
+        logger.info(f"Query processed successfully in {processing_time:.3f}s")
+        return response_obj
+        
     except Exception as e:
-        logger.error(f"Error processing query: {e}")
+        logger.error(f"Error processing query: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 async def get_orchestrator_response(query: str) -> str:
@@ -310,21 +321,24 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
             "response_time": round(response_time, 2)
         }
 
-def synthesize_responses(
+async def synthesize_responses_with_ai(
     query: str,
     orchestrator_response: str,
     agents_responses: List[Dict[str, Any]]
 ) -> tuple[str, str]:
     """
-    Sintetiza la respuesta del orquestador con las de los agentes
+    El orquestador analiza y valida las respuestas de los agentes usando IA
+    para generar una respuesta final inteligente
     
     Returns:
         (final_response, reasoning)
     """
-    logger.info("Synthesizing responses...")
+    logger.info("AI-powered synthesis starting...")
+    logger.info(f"Agents responses count: {len(agents_responses) if agents_responses else 0}")
     
     # Si no hay respuestas de agentes, usar solo orquestador
     if not agents_responses:
+        logger.info("No agent responses, using only orchestrator")
         return orchestrator_response, "Solo respuesta del orquestador (agentes no disponibles)"
     
     # Filtrar respuestas exitosas
@@ -333,39 +347,91 @@ def synthesize_responses(
         if r.get("status") == "success" and r.get("response") and not r["response"].startswith("[Error")
     ]
     
+    logger.info(f"Successful responses: {len(successful_responses)}")
+    
     # Si no hay respuestas exitosas de agentes
     if not successful_responses:
+        logger.warning("No successful agent responses")
         return orchestrator_response, "Solo respuesta del orquestador (agentes no respondieron)"
     
-    # Construir respuesta final
-    reasoning_parts = []
-    reasoning_parts.append(f"Análisis del orquestador: {orchestrator_response[:100]}...")
-    
-    # Agregar perspectivas de agentes
-    for agent_resp in successful_responses:
-        reasoning_parts.append(
-            f"- {agent_resp['agent_name']}: {agent_resp['response'][:80]}..."
-        )
-    
-    reasoning = "\n".join(reasoning_parts)
-    
-    # Respuesta final sintetizada
-    final_response = f"""**Respuesta del Orquestador:**
-{orchestrator_response}
+    # Construir el contexto para que el orquestador analice
+    analysis_context = f"""Query del usuario: {query}
 
-**Perspectivas de Agentes Especializados:**
+Mi análisis inicial: {orchestrator_response}
+
+Respuestas de agentes especializados:
 """
     
+    for i, agent_resp in enumerate(successful_responses, 1):
+        agent_name = agent_resp.get('agent_name', 'Unknown')
+        agent_model = agent_resp.get('model', 'unknown')
+        agent_response = agent_resp.get('response', '')
+        analysis_context += f"\n{i}. {agent_name} ({agent_model}):\n{agent_response}\n"
+    
+    # Prompt para el orquestador que analiza y valida
+    synthesis_prompt = f"""{analysis_context}
+
+Como orquestador, tu tarea es:
+1. ANALIZAR cada respuesta de los agentes
+2. VALIDAR cuál o cuáles respuestas son más relevantes y precisas
+3. IDENTIFICAR contradicciones o complementos entre respuestas
+4. GENERAR una respuesta final que integre lo mejor de cada agente
+
+Proporciona una respuesta final coherente, validada y de alta calidad que responda directamente a: "{query}"
+
+Respuesta final validada:"""
+    
+    try:
+        # El orquestador analiza las respuestas con IA
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": "llama3.2",
+                    "prompt": synthesis_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.6,  # Más controlado para síntesis
+                        "num_predict": 300
+                    }
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                final_response = data.get("response", "").strip()
+                
+                # Reasoning detallado
+                reasoning = f"""Proceso de validación del orquestador:
+1. Query recibida: {query}
+2. Agentes consultados: {len(successful_responses)}
+3. Respuestas analizadas y validadas por el orquestador
+4. Respuesta final sintetizada usando inteligencia artificial"""
+                
+                logger.info(f"AI synthesis complete. Final response length: {len(final_response)}")
+                return final_response, reasoning
+            else:
+                logger.warning(f"Synthesis AI call failed: {response.status_code}")
+                # Fallback a concatenación simple
+                return _fallback_synthesis(query, orchestrator_response, successful_responses)
+                
+    except Exception as e:
+        logger.error(f"Error in AI synthesis: {e}")
+        # Fallback a concatenación simple
+        return _fallback_synthesis(query, orchestrator_response, successful_responses)
+
+def _fallback_synthesis(query: str, orchestrator_response: str, successful_responses: List[Dict]) -> tuple[str, str]:
+    """Fallback si la síntesis IA falla"""
+    final_response = f"**Respuesta del Orquestador:**\n{orchestrator_response}\n\n"
+    final_response += "**Respuestas de Agentes:**\n"
+    
     for agent_resp in successful_responses:
-        final_response += f"\n• **{agent_resp['agent_name']}** ({agent_resp['model']}): {agent_resp['response']}\n"
+        agent_name = agent_resp.get('agent_name', 'Unknown Agent')
+        agent_response = agent_resp.get('response', '[Sin respuesta]')
+        final_response += f"\n• **{agent_name}**: {agent_response}"
     
-    final_response += f"\n**Síntesis:** Se consultaron {len(successful_responses)} agentes especializados. "
-    
-    if len(successful_responses) > 1:
-        final_response += "Las respuestas convergen en proporcionar una perspectiva integral de tu consulta."
-    else:
-        final_response += "La respuesta del agente complementa el análisis del orquestador."
-    
+    reasoning = "Síntesis básica (modo fallback)"
     return final_response, reasoning
 
 if __name__ == "__main__":

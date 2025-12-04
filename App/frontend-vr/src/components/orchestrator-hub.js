@@ -18,6 +18,7 @@ AFRAME.registerComponent('orchestrator-hub', {
         const sphere = document.createElement('a-sphere');
         sphere.setAttribute('radius', data.radius);
         sphere.setAttribute('color', data.color);
+        sphere.setAttribute('opacity', 0.5);
         sphere.setAttribute('metalness', 0.8);
         sphere.setAttribute('roughness', 0.2);
         sphere.setAttribute('segments-height', 32);
@@ -49,7 +50,7 @@ AFRAME.registerComponent('orchestrator-hub', {
         ring.setAttribute('radius', data.radius + 0.5);
         ring.setAttribute('radius-tubular', 0.05);
         ring.setAttribute('color', data.color);
-        ring.setAttribute('opacity', 0.5);
+        ring.setAttribute('opacity', 0.3);
         ring.setAttribute('animation__spin', {
             property: 'rotation',
             to: '0 360 0',
@@ -65,7 +66,7 @@ AFRAME.registerComponent('orchestrator-hub', {
         title.setAttribute('align', 'center');
         title.setAttribute('position', `0 ${data.radius + 1} 0`);
         title.setAttribute('scale', '2 2 2');
-        title.setAttribute('color', data.color);
+        title.setAttribute('color', '#FFFFFF');
         title.setAttribute('font', 'roboto');
         el.appendChild(title);
         
@@ -73,35 +74,25 @@ AFRAME.registerComponent('orchestrator-hub', {
         this.ring = ring;
         this.title = title;
 
-        // Panel de respuesta central (debajo del orchestrator, doble cara)
-        const responseBg = document.createElement('a-plane');
-        responseBg.setAttribute('width', 7.5);
-        responseBg.setAttribute('height', 1.25);
-        responseBg.setAttribute('position', `0 ${-data.radius - 2.5} 0`);
-        responseBg.setAttribute('color', '#1A1A1A');
-        responseBg.setAttribute('opacity', 0.9);
-        responseBg.setAttribute('side', 'double');
-        el.appendChild(responseBg);
-
+        // Texto de respuesta central (debajo de la esfera como los agentes) - sin fondo
         const responseText = document.createElement('a-text');
         responseText.setAttribute('value', '');
         responseText.setAttribute('align', 'center');
-        responseText.setAttribute('position', `0 ${-data.radius - 2.5} 0.01`);
-        responseText.setAttribute('width', 7.2);
+        responseText.setAttribute('position', `0 ${-data.radius - 1.8} 0.01`);
+        responseText.setAttribute('width', 10);
         responseText.setAttribute('color', '#FFFFFF');
-        responseText.setAttribute('wrap-count', 96);
+        responseText.setAttribute('wrap-count', 120);
         responseText.setAttribute('side', 'double');
         el.appendChild(responseText);
 
         this.responseText = responseText;
-        this.responseBg = responseBg;
         
         // Timer text para mostrar tiempo transcurrido
         const timerText = document.createElement('a-text');
         timerText.setAttribute('value', '');
         timerText.setAttribute('align', 'center');
         timerText.setAttribute('position', `0 ${-data.radius - 0.8} 0.02`);
-        timerText.setAttribute('width', 3);
+        timerText.setAttribute('width', 6);
         timerText.setAttribute('color', '#FFD700');
         timerText.setAttribute('font', 'roboto');
         el.appendChild(timerText);
@@ -213,6 +204,16 @@ AFRAME.registerComponent('orchestrator-hub', {
                     this.timerText.setAttribute('value', '');
                 }
             }, 5000);
+        }
+        
+        // Restaurar escala de la esfera a su estado inicial
+        if (this.sphere) {
+            this.sphere.setAttribute('animation__restore', {
+                property: 'scale',
+                to: '1 1 1',
+                dur: 500,
+                easing: 'easeInOutQuad'
+            });
         }
     }
 });

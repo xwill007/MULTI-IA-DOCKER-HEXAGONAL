@@ -63,17 +63,7 @@ AFRAME.registerComponent('agent-sphere', {
         // Panel de respuesta del agente (doble cara)
         const responsePanel = document.createElement('a-entity');
         
-        // Fondo (visible por ambos lados)
-        const responseBg = document.createElement('a-plane');
-        responseBg.setAttribute('width', 2.2);
-        responseBg.setAttribute('height', 0.8);
-        responseBg.setAttribute('position', '0 -1.0 0');
-        responseBg.setAttribute('color', '#111111');
-        responseBg.setAttribute('opacity', 0.85);
-        responseBg.setAttribute('side', 'double');
-        responsePanel.appendChild(responseBg);
-
-        // Texto (visible por ambos lados)
+        // Texto (visible por ambos lados) - sin fondo para mejor visualización
         const responseText = document.createElement('a-text');
         responseText.setAttribute('value', '');
         responseText.setAttribute('align', 'center');

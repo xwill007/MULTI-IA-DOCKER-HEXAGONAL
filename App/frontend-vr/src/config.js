@@ -13,9 +13,9 @@ export const CONFIG = {
     
     // Orchestrator Configuration
     ORCHESTRATOR: {
-        position: { x: 0, y: 2, z: -8 },
+        position: { x: 0, y: 0.0, z: -8 }, // Posición del orquestador agentes en el espacio VR
         radius: 2,
-        color: '#FFD700',
+        color: '#070142',
         pulseSpeed: 2000,
         particleCount: 500
     },
