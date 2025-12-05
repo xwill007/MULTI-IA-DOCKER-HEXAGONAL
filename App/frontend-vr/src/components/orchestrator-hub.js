@@ -78,7 +78,7 @@ AFRAME.registerComponent('orchestrator-hub', {
         const responseText = document.createElement('a-text');
         responseText.setAttribute('value', '');
         responseText.setAttribute('align', 'center');
-        responseText.setAttribute('position', `0 ${-data.radius - 1.8} 0.01`);
+        responseText.setAttribute('position', `0 ${-data.radius - 0.5} 0.01`);
         responseText.setAttribute('width', 20);
         responseText.setAttribute('color', '#FFFFFF');
         responseText.setAttribute('wrap-count', 300);

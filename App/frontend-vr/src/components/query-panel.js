@@ -17,24 +17,6 @@ AFRAME.registerComponent('query-panel', {
         // Almacenar botones para detección de mouse
         this.buttons = [];
         
-        const predefinedQueries = [
-            'Cuéntame un chiste'
-        ];
-        
-        const queryButtons = [];
-        predefinedQueries.forEach((query, index) => {
-            const button = this.createButton(
-                query,
-                { x: 0, y: -0.4 - (index * 0.4), z: 0.01 },
-                () => this.sendQuery(query),
-                '#21f33d',
-                data.width - 0.4
-            );
-            el.appendChild(button);
-            this.buttons.push(button);
-            queryButtons.push(button);
-        });
-        
         const sendButton = this.createButton(
             'SEND CUSTOM QUERY',
             { x: 0, y: 0, z: 0.01 },
@@ -45,11 +27,29 @@ AFRAME.registerComponent('query-panel', {
         el.appendChild(sendButton);
         this.buttons.push(sendButton);
         
+        const predefinedQueries = [
+            'Cuéntame un chiste'
+        ];
+        
+        const queryButtons = [];
+        predefinedQueries.forEach((query, index) => {
+            const button = this.createButton(
+                query,
+                { x: 0, y: 0.4 + (index * 0.4), z: 0.01 },
+                () => this.sendQuery(query),
+                '#21f33d',
+                data.width - 0.4
+            );
+            el.appendChild(button);
+            this.buttons.push(button);
+            queryButtons.push(button);
+        });
+        
         // Crear elemento de estado
         const statusText = document.createElement('a-text');
         statusText.setAttribute('value', '');
         statusText.setAttribute('align', 'center');
-        statusText.setAttribute('position', `0 -1 0.01`);
+        statusText.setAttribute('position', `0 -0.4 0.01`);
         statusText.setAttribute('color', '#888888');
         statusText.setAttribute('width', data.width - 0.4);
         statusText.setAttribute('wrap-count', 50);
