@@ -79,9 +79,11 @@ AFRAME.registerComponent('orchestrator-hub', {
         responseText.setAttribute('value', '');
         responseText.setAttribute('align', 'center');
         responseText.setAttribute('position', `0 ${-data.radius - 1.8} 0.01`);
-        responseText.setAttribute('width', 10);
+        responseText.setAttribute('width', 20);
         responseText.setAttribute('color', '#FFFFFF');
-        responseText.setAttribute('wrap-count', 120);
+        responseText.setAttribute('wrap-count', 300);
+        responseText.setAttribute('baseline', 'top');
+        responseText.setAttribute('anchor', 'center');
         responseText.setAttribute('side', 'double');
         el.appendChild(responseText);
 
@@ -152,8 +154,7 @@ AFRAME.registerComponent('orchestrator-hub', {
     updateResponse: function(text) {
         if (!this.responseText) return;
         const content = (text || '').trim();
-        const shown = content.length > 0 ? content.slice(0, 220) : '';
-        this.responseText.setAttribute('value', shown);
+        this.responseText.setAttribute('value', content);
     },
     
     /**
