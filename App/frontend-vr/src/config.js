@@ -2,9 +2,9 @@
 export const CONFIG = {
     // API Configuration
     API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-    API_TIMEOUT: 180000,
-    RETRY_ATTEMPTS: 5,
-    RETRY_DELAY: 3000,
+    API_TIMEOUT: 350000,
+    RETRY_ATTEMPTS: 3,
+    RETRY_DELAY: 5000,
     
     // WebSocket Configuration
     WS_URL: import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws',

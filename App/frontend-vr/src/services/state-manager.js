@@ -12,7 +12,8 @@ class StateManager {
             selectedAgent: null,
             loading: false,
             error: null,
-            lastUpdate: null
+            lastUpdate: null,
+            conversationId: null
         };
         
         this.subscribers = [];
@@ -125,9 +126,19 @@ class StateManager {
         this.updateState({ loading: true, error: null });
         
         try {
-            const result = await this.apiClient.sendQuery(query);
+            // Include conversation_id in the request
+            const result = await this.apiClient.sendQuery(query, this.state.conversationId);
             
-            this.updateState({ loading: false });
+            // Store conversation_id from response
+            if (result && result.conversation_id) {
+                this.updateState({ 
+                    loading: false,
+                    conversationId: result.conversation_id
+                });
+                console.log('[StateManager] Conversation ID:', result.conversation_id);
+            } else {
+                this.updateState({ loading: false });
+            }
             
             console.log('[StateManager] Query sent successfully');
             return result;

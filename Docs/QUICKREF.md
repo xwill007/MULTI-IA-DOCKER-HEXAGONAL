@@ -220,10 +220,15 @@ Estado actual (completado):
 - [x] `.gitignore` y `.dockerignore` para evitar subir modelos/caches
 
 Pendiente próximo:
+
+BACKEND:
 - [ ] Persistencia de conversación (`conversation_id`) y reenvío desde frontend
-- [ ] Mejorar notificaciones (duración y estados)
-- [ ] Colorear tiempos por agente (verde/amarillo/rojo)
+- [ ] Retroalimentacion a la respuesta (eliminar preguntas y respuestas seleccionadas, casilla para futura retroalimentacion, casilla bool is_true)
 - [ ] Documentar endpoints y formato de respuesta
+
+FRONT:
+- [ ] ON CLICK desde mouse a los elementos VR
+- [ ] definir los elementos como componentes que pasen parametros como posicion, color, color texto, visibilidad
 
 ---
 

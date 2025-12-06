@@ -102,6 +102,19 @@ AFRAME.registerComponent('orchestrator-hub', {
         this.timerText = timerText;
         this.timerInterval = null;
         this.startTime = null;
+        
+        // Conversation ID display
+        const conversationIdText = document.createElement('a-text');
+        conversationIdText.setAttribute('value', '');
+        conversationIdText.setAttribute('align', 'center');
+        conversationIdText.setAttribute('position', `0 ${data.radius + 0.3} 0.02`);
+        conversationIdText.setAttribute('width', 4);
+        conversationIdText.setAttribute('color', '#00BCD4');
+        conversationIdText.setAttribute('font', 'roboto');
+        conversationIdText.setAttribute('opacity', 0.7);
+        el.appendChild(conversationIdText);
+        
+        this.conversationIdText = conversationIdText;
     },
     
     /**
@@ -155,6 +168,19 @@ AFRAME.registerComponent('orchestrator-hub', {
         if (!this.responseText) return;
         const content = (text || '').trim();
         this.responseText.setAttribute('value', content);
+    },
+    
+    /**
+     * Actualiza el ID de conversación mostrado
+     */
+    updateConversationId: function(conversationId) {
+        if (!this.conversationIdText) return;
+        if (conversationId) {
+            const shortId = conversationId.substring(0, 8);
+            this.conversationIdText.setAttribute('value', `ID: ${shortId}...`);
+        } else {
+            this.conversationIdText.setAttribute('value', '');
+        }
     },
     
     /**

@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime
 import logging
 import os
+import uuid
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +44,7 @@ class Agent(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     use_agents: bool = True
+    conversation_id: Optional[str] = None
 
 class QueryResponse(BaseModel):
     query: str
@@ -52,6 +54,7 @@ class QueryResponse(BaseModel):
     reasoning: str
     timestamp: str
     processing_time: float
+    conversation_id: str
 
 class CreateAgentRequest(BaseModel):
     name: str
@@ -88,6 +91,10 @@ agents_db: Dict[str, Agent] = {
         endpoint=OLLAMA_BASE_URL
     )
 }
+
+# Conversation history storage (in-memory)
+# Format: {conversation_id: [{"role": "user/assistant", "content": "...", "timestamp": "..."}]}
+conversations_db: Dict[str, List[Dict[str, str]]] = {}
 
 # Health check
 @app.get("/health")
@@ -141,12 +148,25 @@ async def process_query(request: QueryRequest):
     """
     start_time = asyncio.get_event_loop().time()
     
+    # Generate or reuse conversation_id
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    
+    # Initialize conversation history if new
+    if conversation_id not in conversations_db:
+        conversations_db[conversation_id] = []
+        logger.info(f"New conversation started: {conversation_id}")
+    else:
+        logger.info(f"Continuing conversation: {conversation_id} (history: {len(conversations_db[conversation_id])} messages)")
+    
+    # Get conversation history for context
+    conversation_history = conversations_db[conversation_id]
+    
     logger.info(f"Processing query: {request.query}")
     
     try:
-        # 1. Respuesta del orquestador (razonamiento propio)
-        logger.info("Step 1: Getting orchestrator response...")
-        orchestrator_response = await get_orchestrator_response(request.query)
+        # 1. Respuesta del orquestador (razonamiento propio) with conversation context
+        logger.info("Step 1: Getting orchestrator response with conversation context...")
+        orchestrator_response = await get_orchestrator_response(request.query, conversation_history)
         logger.info(f"Orchestrator response received: {orchestrator_response[:100] if orchestrator_response else 'EMPTY'}...")
         
         # 2. Consultar agentes si está habilitado
@@ -167,6 +187,22 @@ async def process_query(request: QueryRequest):
         )
         logger.info(f"Synthesis complete. Final response length: {len(final_response)}")
         
+        # Store conversation history
+        conversations_db[conversation_id].append({
+            "role": "user",
+            "content": request.query,
+            "timestamp": datetime.now().isoformat()
+        })
+        conversations_db[conversation_id].append({
+            "role": "assistant",
+            "content": final_response,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Keep only last 20 messages to avoid memory bloat
+        if len(conversations_db[conversation_id]) > 20:
+            conversations_db[conversation_id] = conversations_db[conversation_id][-20:]
+        
         processing_time = asyncio.get_event_loop().time() - start_time
         
         response_obj = QueryResponse(
@@ -176,19 +212,20 @@ async def process_query(request: QueryRequest):
             final_response=final_response,
             reasoning=reasoning,
             timestamp=datetime.now().isoformat(),
-            processing_time=round(processing_time, 3)
+            processing_time=round(processing_time, 3),
+            conversation_id=conversation_id
         )
         
-        logger.info(f"Query processed successfully in {processing_time:.3f}s")
+        logger.info(f"Query processed successfully in {processing_time:.3f}s (conversation: {conversation_id})")
         return response_obj
         
     except Exception as e:
         logger.error(f"Error processing query: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-async def get_orchestrator_response(query: str) -> str:
+async def get_orchestrator_response(query: str, conversation_history: list = []) -> str:
     """
-    Genera respuesta del orquestador usando su propio modelo (llama3.2)
+    Genera respuesta del orquestador usando su propio modelo (llama3.2) con contexto de conversación
     """
     logger.info("Getting orchestrator response...")
     
@@ -197,8 +234,18 @@ async def get_orchestrator_response(query: str) -> str:
 2. Proporcionar respuestas iniciales basadas en tu conocimiento
 3. Coordinar agentes especializados cuando sea necesario
 4. Sintetizar información de múltiples fuentes
+5. Mantener contexto de conversación y evitar repetir respuestas
 
-Responde de manera clara, concisa y profesional."""
+Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, asegúrate de contar uno diferente cada vez."""
+    
+    # Build conversation context
+    context = system_prompt
+    if conversation_history and len(conversation_history) > 0:
+        context += "\n\nHistorial de conversación:"
+        for msg in conversation_history[-6:]:  # Last 3 exchanges
+            role = "Usuario" if msg.get("role") == "user" else "Asistente"
+            content = msg.get("content", "")
+            context += f"\n{role}: {content}"
     
     try:
         # Timeout más largo para la primera carga del modelo
@@ -208,7 +255,7 @@ Responde de manera clara, concisa y profesional."""
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
                     "model": "llama3.2",
-                    "prompt": f"{system_prompt}\n\nUsuario: {query}\n\nOrquestador:",
+                    "prompt": f"{context}\n\nUsuario: {query}\n\nOrquestador:",
                     "stream": False,
                     "options": {
                         "temperature": 0.7,

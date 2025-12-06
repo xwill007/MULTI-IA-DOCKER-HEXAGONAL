@@ -283,6 +283,11 @@ class VRApp {
                 if (orch && orch.components['orchestrator-hub']) {
                     const finalText = result.final_response || result.orchestrator_response || result.response;
                     orch.components['orchestrator-hub'].updateResponse(finalText);
+                    
+                    // Update conversation ID display
+                    if (result.conversation_id) {
+                        orch.components['orchestrator-hub'].updateConversationId(result.conversation_id);
+                    }
                 }
 
                 // Update each agent sphere with response time

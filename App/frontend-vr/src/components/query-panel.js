@@ -293,7 +293,7 @@ AFRAME.registerComponent('query-panel', {
         this.el.emit('query-submitted', { query: query });
         
         setTimeout(() => {
-            this.updateStatus('Query sent successfully', '#614cafff');
+            this.updateStatus('Query sent successfully', '#614caf');
             setTimeout(() => {
                 this.updateStatus('', '#888888');
             }, 2000);

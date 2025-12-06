@@ -113,8 +113,8 @@ class APIClient {
     /**
      * Enviar query al orchestrator
      */
-    async sendQuery(query) {
-        console.log('[APIClient] Sending query:', query);
+    async sendQuery(query, conversationId = null) {
+        console.log('[APIClient] Sending query:', query, 'conversationId:', conversationId);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(1500);
@@ -147,23 +147,29 @@ class APIClient {
         }
         
         try {
+            const requestBody = { query };
+            if (conversationId) {
+                requestBody.conversation_id = conversationId;
+            }
+            
             const response = await this.fetchWithRetry(`${this.baseURL}/query`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ query })
+                body: JSON.stringify(requestBody)
             });
             
             const data = await response.json();
             console.log('[APIClient] Query response:', data);
-            // Return full result with all agent responses
+            // Return full result with all agent responses and conversation_id
             return {
                 orchestrator_response: data.orchestrator_response,
                 agents_responses: data.agents_responses || [],
                 final_response: data.final_response || data.response,
                 reasoning: data.reasoning,
                 processing_time: data.processing_time,
+                conversation_id: data.conversation_id,
                 response: data.final_response || data.response // backward compatibility
             };
         } catch (error) {
