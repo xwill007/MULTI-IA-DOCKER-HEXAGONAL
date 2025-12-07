@@ -35,8 +35,17 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - PYTHONUNBUFFERED=1
+      - STORAGE_TYPE=hybrid
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_TTL_SECONDS=3600
+      - REDIS_MAX_MESSAGES=20
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ias_db
     depends_on:
       ollama:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -61,6 +70,45 @@ services:
     restart: unless-stopped
     command: npm run dev -- --host 0.0.0.0
 
+  # Redis - Caché de conversaciones activas
+  redis:
+    image: redis:7-alpine
+    container_name: multi-ia-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - multi-ia-network
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL - Historial permanente de conversaciones
+  postgres:
+    image: postgres:15-alpine
+    container_name: multi-ia-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - multi-ia-network
+    environment:
+      - POSTGRES_DB=ias_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # ChromaDB - Vector Database (futuro)
   chromadb:
     image: chromadb/chroma:latest
@@ -74,21 +122,6 @@ services:
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
-    restart: unless-stopped
-    profiles:
-      - full
-
-  # Redis - Cache y Mensajería (futuro)
-  redis:
-    image: redis:7-alpine
-    container_name: multi-ia-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./data/redis:/data
-    networks:
-      - multi-ia-network
-    command: redis-server --appendonly yes
     restart: unless-stopped
     profiles:
       - full

@@ -12,6 +12,18 @@ from datetime import datetime
 import logging
 import os
 import uuid
+import sys
+
+# Add Infrastructure to path
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from Infrastructure.conversation_storage import (
+    ConversationStoragePort,
+    InMemoryConversationStorage,
+    RedisConversationStorage,
+    PostgreSQLConversationStorage,
+    HybridConversationStorage
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -94,7 +106,36 @@ agents_db: Dict[str, Agent] = {
 
 # Conversation history storage (in-memory)
 # Format: {conversation_id: [{"role": "user/assistant", "content": "...", "timestamp": "..."}]}
-conversations_db: Dict[str, List[Dict[str, str]]] = {}
+# conversations_db: Dict[str, List[Dict[str, str]]] = {}  # Replaced by storage layer
+
+# Initialize storage based on environment
+def get_storage() -> ConversationStoragePort:
+    """Factory para crear storage según configuración"""
+    storage_type = os.getenv("STORAGE_TYPE", "memory").lower()
+    
+    logger.info(f"Initializing storage type: {storage_type}")
+    
+    if storage_type == "redis":
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        redis_ttl = int(os.getenv("REDIS_TTL_SECONDS", "3600"))
+        return RedisConversationStorage(redis_url, redis_ttl)
+    
+    elif storage_type == "postgresql":
+        db_url = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres:5432/ias_db")
+        return PostgreSQLConversationStorage(db_url)
+    
+    elif storage_type == "hybrid":
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        db_url = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres:5432/ias_db")
+        redis_ttl = int(os.getenv("REDIS_TTL_SECONDS", "3600"))
+        redis_max_messages = int(os.getenv("REDIS_MAX_MESSAGES", "20"))
+        return HybridConversationStorage(redis_url, db_url, redis_ttl, redis_max_messages)
+    
+    else:  # memory (default)
+        return InMemoryConversationStorage()
+
+# Global storage instance
+storage: ConversationStoragePort = get_storage()
 
 # Health check
 @app.get("/health")
@@ -113,6 +154,30 @@ async def get_agents():
     """Get all registered agents"""
     logger.info(f"Getting {len(agents_db)} agents")
     return list(agents_db.values())
+
+# Get all conversations (for debugging)
+@app.get("/conversations")
+async def get_conversations():
+    """Get all stored conversations (debugging endpoint)"""
+    conversations = await storage.get_all_conversations()
+    logger.info(f"Retrieved {len(conversations)} conversations")
+    return {
+        "total_conversations": len(conversations),
+        "conversations": {
+            conv_id: conv.to_dict()
+            for conv_id, conv in conversations.items()
+        }
+    }
+
+# Get specific conversation
+@app.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    """Get a specific conversation by ID"""
+    conversation = await storage.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    return conversation.to_dict()
 
 # Create new agent
 @app.post("/agents", response_model=Agent)
@@ -151,15 +216,19 @@ async def process_query(request: QueryRequest):
     # Generate or reuse conversation_id
     conversation_id = request.conversation_id or str(uuid.uuid4())
     
-    # Initialize conversation history if new
-    if conversation_id not in conversations_db:
-        conversations_db[conversation_id] = []
+    # Get or create conversation
+    conversation = await storage.get_conversation(conversation_id)
+    if not conversation:
+        conversation = await storage.create_conversation(conversation_id)
         logger.info(f"New conversation started: {conversation_id}")
     else:
-        logger.info(f"Continuing conversation: {conversation_id} (history: {len(conversations_db[conversation_id])} messages)")
+        logger.info(f"Continuing conversation: {conversation_id} (history: {len(conversation.messages)} messages)")
     
-    # Get conversation history for context
-    conversation_history = conversations_db[conversation_id]
+    # Convert to dict format for compatibility with existing code
+    conversation_history = [
+        {"role": msg.role, "content": msg.content, "timestamp": msg.timestamp}
+        for msg in conversation.messages
+    ]
     
     logger.info(f"Processing query: {request.query}")
     
@@ -187,21 +256,9 @@ async def process_query(request: QueryRequest):
         )
         logger.info(f"Synthesis complete. Final response length: {len(final_response)}")
         
-        # Store conversation history
-        conversations_db[conversation_id].append({
-            "role": "user",
-            "content": request.query,
-            "timestamp": datetime.now().isoformat()
-        })
-        conversations_db[conversation_id].append({
-            "role": "assistant",
-            "content": final_response,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Keep only last 20 messages to avoid memory bloat
-        if len(conversations_db[conversation_id]) > 20:
-            conversations_db[conversation_id] = conversations_db[conversation_id][-20:]
+        # Store conversation messages using storage layer
+        await storage.save_message(conversation_id, "user", request.query)
+        await storage.save_message(conversation_id, "assistant", final_response)
         
         processing_time = asyncio.get_event_loop().time() - start_time
         
