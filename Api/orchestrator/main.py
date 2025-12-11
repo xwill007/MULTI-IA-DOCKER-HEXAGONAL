@@ -14,10 +14,13 @@ import os
 import uuid
 import sys
 
-# Add Infrastructure to path - Go up 2 levels from Api/orchestrator to root
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+# Ensure orchestrator and external Infrastructure paths are on sys.path for imports
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INFRA_PATH = os.getenv("INFRA_PATH", "/ext/Infrastructure")
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, INFRA_PATH)
 
-from Infrastructure.conversation_storage import (
+from conversation_storage import (
     ConversationStoragePort,
     InMemoryConversationStorage,
     RedisConversationStorage,

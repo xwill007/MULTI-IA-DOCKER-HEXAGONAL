@@ -1,0 +1,25 @@
+# Copilot Instructions
+
+- **Scope**: Multi-agent FastAPI orchestrator (Python 3.11) talking to local Ollama; VR frontend in `App/frontend-vr` (Vite/A-Frame) hitting `http://localhost:8000`.
+- **Core backend entry**: `Api/orchestrator/main.py` defines all endpoints (`/health`, `/agents`, `/query`, `/conversations`). Imports shared storage from `Infrastructure/conversation_storage.py` via `sys.path` hack; keep that import working when moving files.
+- **Conversation storage**: `get_storage()` picks implementation by `STORAGE_TYPE` env (`memory` default, `redis`, `postgresql`, `hybrid`). Redis uses TTL + message pruning; Postgres creates tables on first use; Hybrid combines Redis cache and Postgres history. New storage adapters must implement `ConversationStoragePort` and be wired in `get_storage()`.
+- **Agents model**: In-memory `agents_db` seeds three agents (codellama, mistral, llama3.2). Creating agents (`POST /agents`) only augments this dict—no Docker auto-build yet. For new agent capabilities, keep fields `id`, `name`, `model`, `capabilities`, `endpoint` consistent.
+- **Query flow**: `/query` creates/reuses `conversation_id`, loads history (last 6 messages), and:
+  - Calls `get_orchestrator_response()` → Ollama `llama3.2` with context-aware system prompt.
+  - If `use_agents`, `query_agents()` hits Ollama per agent with model-specific prompts; errors become degraded responses with rule-based fallbacks.
+  - `synthesize_responses_with_ai()` asks `llama3.2` to validate/merge responses; falls back to `_fallback_synthesis` or rule-based replies when LLMs fail.
+  - Messages persist through `storage.save_message` and are pruned to latest 20.
+- **Health/debug**: `/conversations` dumps all stored conversations; `/conversations/{id}` fetches one.
+- **Conversation rules**: Keep responses concise; avoid raising on LLM outages—prefer degraded/rule-based responses like `get_rule_based_response()`.
+- **Env knobs**: `OLLAMA_BASE_URL` (defaults to `http://ollama:11434`), `STORAGE_TYPE`, `REDIS_URL`, `REDIS_TTL_SECONDS`, `REDIS_MAX_MESSAGES`, `DATABASE_URL`. Docker Compose sets defaults plus `STORAGE_TYPE=hybrid` for dev stack.
+- **Run locally (preferred)**:
+  - Backend: `./Scripts/start-orchestrator-dev.ps1` (creates venv, installs deps, uvicorn reload).
+  - Frontend: `./Scripts/start-front-dev.ps1` (Vite dev server).
+  - Full stack: `docker compose up -d` (services: ollama, orchestrator, frontend-vr, redis, postgres, optional chromadb).
+- **Frontend config**: `App/frontend-vr/src/config.js` uses `API_BASE_URL` and `MOCK_MODE`; set `MOCK_MODE=false` to hit real backend.
+- **Persistence hotspots**: `Infrastructure/conversation_storage.py` defines pruning, TTLs, and Postgres schemas; adjust there when changing history limits or schema.
+- **Timeouts**: HTTPX calls to Ollama use generous timeouts (120s overall, 10s connect); preserve or tune in long-running model setups.
+- **Style/conventions**: Keep Spanish-facing responses and docstrings; prefer async HTTPX for LLM calls; avoid breaking CORS list in `main.py`.
+- **Tests**: Minimal tests exist; place new backend tests under `Api/orchestrator/tests/{unit,integration}` to match layout.
+- **Docs to consult**: `Docs/QUICKSTART.md` (dev workflow), `Docs/QUICKREF.md` (architecture map), `README.md` (current feature status), `Docs/ARQUITECTURA_DINAMICA.md` (intended hexagonal layout—actual code is partially implemented).
+- **Common pitfalls**: missing Ollama models, wrong `STORAGE_TYPE`, or frontend left in mock mode. Use `/health` and `/conversations` to verify backend state.

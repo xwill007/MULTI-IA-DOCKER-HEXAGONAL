@@ -30,11 +30,14 @@ services:
     volumes:
       - ./Api/orchestrator:/app
       - ./Api/shared:/app/shared
+      - ./Infrastructure:/ext/Infrastructure
     networks:
       - multi-ia-network
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/ext/Infrastructure
+      - INFRA_PATH=/ext/Infrastructure
       - STORAGE_TYPE=hybrid
       - REDIS_URL=redis://redis:6379/0
       - REDIS_TTL_SECONDS=3600
