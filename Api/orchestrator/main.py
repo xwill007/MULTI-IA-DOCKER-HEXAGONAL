@@ -20,7 +20,7 @@ INFRA_PATH = os.getenv("INFRA_PATH", "/ext/Infrastructure")
 sys.path.insert(0, BASE_DIR)
 sys.path.insert(0, INFRA_PATH)
 
-from conversation_storage import (
+from conversation_storage import (  # type: ignore # Docker mount at /ext/Infrastructure
     ConversationStoragePort,
     InMemoryConversationStorage,
     RedisConversationStorage,
