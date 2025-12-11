@@ -380,30 +380,51 @@ class VRApp {
             yOffset -= 0.5;
             
             result.agents_responses.forEach((agentResp, index) => {
+                // Determine title and color based on status
+                let agentTitle = agentResp.agent_name || `Agent ${index + 1}`;
+                let agentColor = CONFIG.AGENTS.colors[agentResp.model] || '#4A90E2';
+                
+                if (agentResp.status === 'degraded') {
+                    agentTitle += ' (Degraded)';
+                    agentColor = '#FFA726';  // Orange for degraded mode
+                } else if (agentResp.status === 'error' || agentResp.error) {
+                    agentTitle += ' (Error)';
+                    agentColor = '#F44336';  // Red for errors
+                }
+                
                 const agentPanel = this.createResultSection(
-                    agentResp.agent_name || `Agent ${index + 1}`,
+                    agentTitle,
                     agentResp.response || agentResp.error || 'No response',
                     { x: 0, y: yOffset, z: 0 },
                     panelWidth,
-                    agentResp.error ? '#F44336' : CONFIG.AGENTS.colors[agentResp.model] || '#4A90E2'
+                    agentColor
                 );
                 resultPanel.appendChild(agentPanel);
                 yOffset -= 1.8;
             });
         }
         
-        // Final synthesis
-        if (result.final_response && result.final_response !== result.orchestrator_response) {
-            yOffset -= 0.3;
-            const synthesisPanel = this.createResultSection(
-                'FINAL SYNTHESIS',
-                result.final_response,
-                { x: 0, y: yOffset, z: 0 },
-                panelWidth,
-                '#4CAF50'
-            );
-            resultPanel.appendChild(synthesisPanel);
-            yOffset -= 2.0;
+        // Final synthesis - ALWAYS show if available
+        if (result.final_response) {
+            // Only skip if it's truly empty or just whitespace
+            const isMeaningfulResponse = result.final_response && result.final_response.trim().length > 0;
+            const isDifferent = result.final_response !== result.orchestrator_response;
+            
+            // Show synthesis panel if:
+            // 1. It's different from orchestrator response, OR
+            // 2. It exists and is meaningful (even if same as orchestrator)
+            if (isDifferent || isMeaningfulResponse) {
+                yOffset -= 0.3;
+                const synthesisPanel = this.createResultSection(
+                    isDifferent ? 'FINAL SYNTHESIS' : 'PROCESSED RESPONSE',
+                    result.final_response,
+                    { x: 0, y: yOffset, z: 0 },
+                    panelWidth,
+                    isDifferent ? '#4CAF50' : '#7CB342'
+                );
+                resultPanel.appendChild(synthesisPanel);
+                yOffset -= 2.0;
+            }
         }
         
         // Reasoning (if available)

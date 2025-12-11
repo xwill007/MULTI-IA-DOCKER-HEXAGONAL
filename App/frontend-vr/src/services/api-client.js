@@ -11,6 +11,7 @@ class APIClient {
         this.retryDelay = CONFIG.RETRY_DELAY || 2000;
         this.connected = false;
         this.listeners = new Map();
+        this.logs = [];  // In-memory log store
         
         console.log('[APIClient] Initialized', {
             baseURL: this.baseURL,
@@ -19,26 +20,49 @@ class APIClient {
     }
     
     /**
+     * Add log entry to localStorage and in-memory storage
+     */
+    addLog(message) {
+        this.logs.push(message);
+        try {
+            localStorage.setItem('api_debug_logs', JSON.stringify(this.logs.slice(-50))); // Keep last 50
+        } catch (e) {
+            // localStorage might be unavailable
+        }
+    }
+    
+    /**
      * Verificar conexión con el servidor
      */
     async checkConnection() {
         if (CONFIG.MOCK_MODE) {
             console.log('[APIClient] Mock mode enabled, simulating connection');
+            this.addLog('[APIClient] Mock mode enabled');
             this.connected = true;
             this.emit('connectionChange', true);
             return true;
         }
         
         try {
+            const checkLog = `Checking connection to ${this.baseURL}/health`;
+            console.log('[APIClient] ' + checkLog);
+            this.addLog('[APIClient] ' + checkLog);
+            
             const response = await this.fetchWithTimeout(`${this.baseURL}/health`, {
                 method: 'GET'
             });
+            
+            const resultLog = `Health check response status: ${response.status}`;
+            console.log('[APIClient] ' + resultLog);
+            this.addLog('[APIClient] ' + resultLog);
             
             this.connected = response.ok;
             this.emit('connectionChange', this.connected);
             return this.connected;
         } catch (error) {
-            console.error('[APIClient] Connection check failed:', error);
+            const errorLog = `Connection check failed: ${error.message}`;
+            console.error('[APIClient] ' + errorLog);
+            this.addLog('[APIClient] ERROR: ' + errorLog);
             this.connected = false;
             this.emit('connectionChange', false);
             return false;
@@ -49,7 +73,9 @@ class APIClient {
      * Obtener lista de agentes
      */
     async getAgents() {
-        console.log('[APIClient] Getting agents...');
+        const logEntry = `[${new Date().toISOString()}] [APIClient] Getting agents from: ${this.baseURL}/agents`;
+        console.log(logEntry);
+        this.addLog(logEntry);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(500);
@@ -61,14 +87,36 @@ class APIClient {
         
         try {
             const response = await this.fetchWithRetry(`${this.baseURL}/agents`);
-            const data = await response.json();
+            const statusLog = `Response status: ${response.status} ${response.statusText}`;
+            console.log('[APIClient] ' + statusLog);
+            this.addLog('[APIClient] ' + statusLog);
             
+            const headerLog = `Headers: content-type=${response.headers.get('content-type')}, content-length=${response.headers.get('content-length')}, ok=${response.ok}`;
+            console.log('[APIClient] ' + headerLog);
+            this.addLog('[APIClient] ' + headerLog);
+            
+            const text = await response.text();
+            const textLog = `Raw response (first 300 chars): ${text.substring(0, 300)}`;
+            console.log('[APIClient] ' + textLog);
+            this.addLog('[APIClient] ' + textLog);
+            
+            const data = JSON.parse(text);
             console.log('[APIClient] Agents received:', data);
-            this.emit('agentsUpdate', data.agents || data);
-            return data.agents || data;
+            this.addLog('[APIClient] Agents parsed successfully');
+            
+            // Backend returns List[Agent] directly as JSON array
+            const agents = Array.isArray(data) ? data : (data.agents || data);
+            const agentCountLog = `Parsed agents count: ${agents.length || agents}`;
+            console.log('[APIClient] ' + agentCountLog);
+            this.addLog('[APIClient] ' + agentCountLog);
+            
+            this.emit('agentsUpdate', agents);
+            return agents;
         } catch (error) {
-            console.error('[APIClient] Failed to get agents:', error);
-            this.emit('error', error.message);
+            const errorLog = `ERROR: ${error.message}, Stack: ${error.stack}`;
+            console.error('[APIClient] Failed to get agents:', errorLog);
+            this.addLog('[APIClient] FAILED: ' + errorLog);
+            this.emit('error', `Failed to load agents: ${error.message}`);
             throw error;
         }
     }

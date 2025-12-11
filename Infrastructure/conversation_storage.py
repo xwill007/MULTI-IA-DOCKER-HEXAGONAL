@@ -3,10 +3,12 @@ Capa de almacenamiento de conversaciones - Arquitectura Hexagonal
 Define puertos (interfaces) para diferentes estrategias de almacenamiento
 """
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from dataclasses import dataclass, asdict
 import json
+import redis.asyncio as aioredis
+from redis.asyncio import Redis
 
 @dataclass
 class ConversationMessage:
@@ -141,12 +143,19 @@ class RedisConversationStorage(ConversationStoragePort):
     """
     
     def __init__(self, redis_url: str = "redis://localhost:6379", ttl_seconds: int = 3600):
-        import redis.asyncio as aioredis
-        self.redis = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        self.redis_url = redis_url
         self.ttl = ttl_seconds
+        self._redis: Optional[Redis] = None
+    
+    async def _get_redis(self) -> Redis:
+        """Obtener o crear cliente Redis"""
+        if self._redis is None:
+            self._redis = await aioredis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)  # type: ignore
+        return self._redis
     
     async def save_message(self, conversation_id: str, role: str, content: str) -> bool:
         try:
+            redis = await self._get_redis()
             key = f"conv:{conversation_id}"
             message = json.dumps({
                 "role": role,
@@ -155,10 +164,10 @@ class RedisConversationStorage(ConversationStoragePort):
             })
             
             # Agregar mensaje a lista Redis
-            await self.redis.rpush(key, message)
+            await redis.rpush(key, message)  # type: ignore
             
             # Renovar TTL
-            await self.redis.expire(key, self.ttl)
+            await redis.expire(key, self.ttl)  # type: ignore
             
             return True
         except Exception as e:
@@ -167,8 +176,9 @@ class RedisConversationStorage(ConversationStoragePort):
     
     async def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
         try:
+            redis = await self._get_redis()
             key = f"conv:{conversation_id}"
-            messages_raw = await self.redis.lrange(key, 0, -1)
+            messages_raw = await redis.lrange(key, 0, -1)  # type: ignore
             
             if not messages_raw:
                 return None
@@ -179,7 +189,7 @@ class RedisConversationStorage(ConversationStoragePort):
             ]
             
             # Obtener metadata
-            created_at = await self.redis.get(f"{key}:created") or datetime.now().isoformat()
+            created_at = await redis.get(f"{key}:created") or datetime.now().isoformat()  # type: ignore
             
             return Conversation(
                 conversation_id=conversation_id,
@@ -193,8 +203,9 @@ class RedisConversationStorage(ConversationStoragePort):
     
     async def get_all_conversations(self) -> Dict[str, Conversation]:
         try:
+            redis = await self._get_redis()
             # Obtener todas las keys de conversaciones
-            keys = await self.redis.keys("conv:*")
+            keys = await redis.keys("conv:*")  # type: ignore
             conversations = {}
             
             for key in keys:
@@ -211,11 +222,12 @@ class RedisConversationStorage(ConversationStoragePort):
             return {}
     
     async def create_conversation(self, conversation_id: str) -> Conversation:
+        redis = await self._get_redis()
         key = f"conv:{conversation_id}"
         now = datetime.now().isoformat()
         
         # Guardar timestamp de creación
-        await self.redis.set(f"{key}:created", now, ex=self.ttl)
+        await redis.set(f"{key}:created", now, ex=self.ttl)  # type: ignore
         
         return Conversation(
             conversation_id=conversation_id,
@@ -226,8 +238,9 @@ class RedisConversationStorage(ConversationStoragePort):
     
     async def delete_conversation(self, conversation_id: str) -> bool:
         try:
+            redis = await self._get_redis()
             key = f"conv:{conversation_id}"
-            await self.redis.delete(key, f"{key}:created")
+            await redis.delete(key, f"{key}:created")  # type: ignore
             return True
         except Exception as e:
             print(f"Redis delete_conversation error: {e}")
@@ -235,12 +248,13 @@ class RedisConversationStorage(ConversationStoragePort):
     
     async def prune_old_messages(self, conversation_id: str, keep_last: int = 20) -> bool:
         try:
+            redis = await self._get_redis()
             key = f"conv:{conversation_id}"
-            length = await self.redis.llen(key)
+            length = await redis.llen(key)  # type: ignore
             
             if length > keep_last:
                 # Eliminar mensajes antiguos (mantener solo últimos keep_last)
-                await self.redis.ltrim(key, -keep_last, -1)
+                await redis.ltrim(key, -keep_last, -1)  # type: ignore
             
             return True
         except Exception as e:
@@ -256,7 +270,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
     def __init__(self, db_url: str = "postgresql://user:password@localhost/ias_db"):
         import asyncpg
         self.db_url = db_url
-        self.pool = None
+        self.pool: Optional[Any] = None  # asyncpg.pool.Pool type
     
     async def _ensure_pool(self):
         """Crear pool de conexiones si no existe"""
@@ -291,9 +305,10 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
                     ON conversations(user_id)
                 """)
     
-    async def save_message(self, conversation_id: str, role: str, content: str, user_id: str = None) -> bool:
+    async def save_message(self, conversation_id: str, role: str, content: str, user_id: Optional[str] = None) -> bool:
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 # Insertar mensaje
                 await conn.execute("""
@@ -316,6 +331,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
     async def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 # Obtener conversación
                 conv_row = await conn.fetchrow("""
@@ -357,6 +373,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
     async def get_all_conversations(self) -> Dict[str, Conversation]:
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("SELECT conversation_id FROM conversations")
                 conversations = {}
@@ -371,8 +388,9 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
             print(f"PostgreSQL get_all_conversations error: {e}")
             return {}
     
-    async def create_conversation(self, conversation_id: str, user_id: str = None) -> Conversation:
+    async def create_conversation(self, conversation_id: str, user_id: Optional[str] = None) -> Conversation:
         await self._ensure_pool()
+        assert self.pool is not None
         async with self.pool.acquire() as conn:
             now = datetime.now()
             await conn.execute("""
@@ -391,6 +409,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
     async def delete_conversation(self, conversation_id: str) -> bool:
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 await conn.execute("DELETE FROM messages WHERE conversation_id = $1", conversation_id)
                 await conn.execute("DELETE FROM conversations WHERE conversation_id = $1", conversation_id)
@@ -402,6 +421,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
     async def prune_old_messages(self, conversation_id: str, keep_last: int = 20) -> bool:
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 # Eliminar mensajes antiguos manteniendo solo últimos N
                 await conn.execute("""
@@ -423,6 +443,7 @@ class PostgreSQLConversationStorage(ConversationStoragePort):
         """Obtener todas las conversaciones de un usuario"""
         try:
             await self._ensure_pool()
+            assert self.pool is not None
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("""
                     SELECT conversation_id 
@@ -456,27 +477,27 @@ class SQLiteConversationStorage(ConversationStoragePort):
     
     async def save_message(self, conversation_id: str, role: str, content: str) -> bool:
         # TODO: INSERT en SQLite
-        pass
+        return False
     
     async def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
         # TODO: SELECT de SQLite
-        pass
+        return None
     
     async def get_all_conversations(self) -> Dict[str, Conversation]:
         # TODO: SELECT ALL de SQLite
-        pass
+        return {}
     
     async def create_conversation(self, conversation_id: str) -> Conversation:
         # TODO: INSERT en SQLite
-        pass
+        return Conversation(conversation_id=conversation_id, messages=[], created_at="", updated_at="")
     
     async def delete_conversation(self, conversation_id: str) -> bool:
         # TODO: DELETE de SQLite
-        pass
+        return False
     
     async def prune_old_messages(self, conversation_id: str, keep_last: int = 20) -> bool:
         # TODO: DELETE con LIMIT
-        pass
+        return False
 
 
 class HybridConversationStorage(ConversationStoragePort):
@@ -501,7 +522,7 @@ class HybridConversationStorage(ConversationStoragePort):
         self.postgres = PostgreSQLConversationStorage(db_url)
         self.max_messages_in_redis = redis_max_messages
     
-    async def save_message(self, conversation_id: str, role: str, content: str, user_id: str = None) -> bool:
+    async def save_message(self, conversation_id: str, role: str, content: str, user_id: Optional[str] = None) -> bool:
         # Guardar en PostgreSQL (permanente)
         pg_success = await self.postgres.save_message(conversation_id, role, content, user_id)
         
@@ -538,7 +559,7 @@ class HybridConversationStorage(ConversationStoragePort):
         # Obtener de PostgreSQL (fuente completa)
         return await self.postgres.get_all_conversations()
     
-    async def create_conversation(self, conversation_id: str, user_id: str = None) -> Conversation:
+    async def create_conversation(self, conversation_id: str, user_id: Optional[str] = None) -> Conversation:
         # Crear en ambos
         pg_conv = await self.postgres.create_conversation(conversation_id, user_id)
         await self.redis.create_conversation(conversation_id)

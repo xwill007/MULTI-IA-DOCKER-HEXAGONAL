@@ -1,7 +1,27 @@
 // Configuración de la aplicación VR
+const getAPIBaseURL = () => {
+    // Si es production, usar la variable de entorno
+    if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
+    }
+    
+    // En desarrollo, detectar la URL automáticamente
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // Si estamos en localhost/127.0.0.1, usar localhost:8000
+    // Si estamos en otra IP, usar esa IP:8000
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+    }
+    
+    // Para otros casos (IPs reales), mantener el protocolo y puerto
+    return `${protocol}//${hostname}:8000`;
+};
+
 export const CONFIG = {
     // API Configuration
-    API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    API_BASE_URL: getAPIBaseURL(),
     API_TIMEOUT: 350000,
     RETRY_ATTEMPTS: 3,
     RETRY_DELAY: 5000,
