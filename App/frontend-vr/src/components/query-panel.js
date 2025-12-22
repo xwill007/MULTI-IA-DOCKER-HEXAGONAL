@@ -55,6 +55,17 @@ AFRAME.registerComponent('query-panel', {
         );
         el.appendChild(historyButton);
         this.buttons.push(historyButton);
+
+        // Botón para iniciar nueva conversación
+        const newConvButton = this.createButton(
+            'NUEVA CONVERSACIÓN',
+            { x: 0, y: -0.8, z: 0.01 },
+            () => this.startNewConversation(),
+            '#4CAF50',
+            data.width - 0.4
+        );
+        el.appendChild(newConvButton);
+        this.buttons.push(newConvButton);
         
         // Crear elemento de estado
         const statusText = document.createElement('a-text');
@@ -327,6 +338,12 @@ AFRAME.registerComponent('query-panel', {
         if (historyPanel) {
             // Hacer visible el panel de historial
             historyPanel.setAttribute('visible', true);
+
+            // Refrescar data al abrir
+            const comp = historyPanel.components['conversation-history'];
+            if (comp && typeof comp.loadConversations === 'function') {
+                comp.loadConversations();
+            }
             
             // Opcionalmente, ocultar el panel de query
             // this.el.setAttribute('visible', false);
@@ -339,6 +356,17 @@ AFRAME.registerComponent('query-panel', {
         } else {
             console.error('[Query Panel] History panel not found');
             this.updateStatus('Error: Panel no encontrado', '#F44336');
+        }
+    },
+
+    startNewConversation: function() {
+        console.log('[Query Panel] Starting new conversation');
+        if (window.vrApp && window.vrApp.stateManager) {
+            window.vrApp.stateManager.resetConversation();
+            this.updateStatus('Nueva conversación iniciada', '#4CAF50');
+            setTimeout(() => this.updateStatus('', '#888888'), 1500);
+        } else {
+            this.updateStatus('Error: estado no disponible', '#F44336');
         }
     },
     

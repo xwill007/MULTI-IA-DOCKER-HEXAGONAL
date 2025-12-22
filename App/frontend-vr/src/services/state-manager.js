@@ -151,6 +151,14 @@ class StateManager {
             throw error;
         }
     }
+
+    /**
+     * Reiniciar conversación (fuerza nuevo conversation_id en próximo envío)
+     */
+    resetConversation() {
+        console.log('[StateManager] Resetting conversation context');
+        this.updateState({ conversationId: null });
+    }
     
     /**
      * Seleccionar agente
