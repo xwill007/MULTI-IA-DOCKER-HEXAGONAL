@@ -17,16 +17,17 @@ AFRAME.registerComponent('query-panel', {
         // Almacenar botones para detección de mouse
         this.buttons = [];
         
-        const sendButton = this.createButton(
-            'SEND CUSTOM QUERY',
-            { x: 0, y: 0, z: 0.01 },
-            () => this.sendCustomQuery(),
-            CONFIG.ORCHESTRATOR.color,
+        // Botón para crear nuevo agente (primero)
+        const createAgentButton = this.createButton(
+            'CREAR AGENTE',
+            { x: 0, y: 0.8, z: 0.01 },
+            () => this.openAgentCreator(),
+            '#FF9800',
             data.width - 0.4
         );
-        el.appendChild(sendButton);
-        this.buttons.push(sendButton);
-        
+        el.appendChild(createAgentButton);
+        this.buttons.push(createAgentButton);
+
         const predefinedQueries = [
             'Cuéntame un chiste'
         ];
@@ -44,6 +45,16 @@ AFRAME.registerComponent('query-panel', {
             this.buttons.push(button);
             queryButtons.push(button);
         });
+        
+        const sendButton = this.createButton(
+            'SEND CUSTOM QUERY',
+            { x: 0, y: 0, z: 0.01 },
+            () => this.sendCustomQuery(),
+            CONFIG.ORCHESTRATOR.color,
+            data.width - 0.4
+        );
+        el.appendChild(sendButton);
+        this.buttons.push(sendButton);
         
         // Botón de historial de conversaciones
         const historyButton = this.createButton(
@@ -367,6 +378,27 @@ AFRAME.registerComponent('query-panel', {
             setTimeout(() => this.updateStatus('', '#888888'), 1500);
         } else {
             this.updateStatus('Error: estado no disponible', '#F44336');
+        }
+    },
+
+    openAgentCreator: function() {
+        console.log('[Query Panel] Opening agent creator');
+        
+        // Buscar el componente de creación de agentes
+        const agentCreatorPanel = document.querySelector('#agent-creator');
+        
+        if (agentCreatorPanel) {
+            // Hacer visible el panel de creación de agentes
+            agentCreatorPanel.setAttribute('visible', true);
+            
+            this.updateStatus('Panel de creación de agente abierto', '#FF9800');
+            
+            setTimeout(() => {
+                this.updateStatus('', '#888888');
+            }, 2000);
+        } else {
+            console.error('[Query Panel] Agent creator panel not found');
+            this.updateStatus('Error: Panel no encontrado', '#F44336');
         }
     },
     
