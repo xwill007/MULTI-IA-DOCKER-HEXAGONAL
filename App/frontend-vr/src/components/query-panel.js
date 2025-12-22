@@ -45,6 +45,17 @@ AFRAME.registerComponent('query-panel', {
             queryButtons.push(button);
         });
         
+        // Botón de historial de conversaciones
+        const historyButton = this.createButton(
+            'VER HISTORIAL',
+            { x: 0, y: -0.4, z: 0.01 },
+            () => this.openHistory(),
+            '#9B59B6',
+            data.width - 0.4
+        );
+        el.appendChild(historyButton);
+        this.buttons.push(historyButton);
+        
         // Crear elemento de estado
         const statusText = document.createElement('a-text');
         statusText.setAttribute('value', '');
@@ -304,6 +315,30 @@ AFRAME.registerComponent('query-panel', {
         const query = prompt('Enter your query:');
         if (query && query.trim() !== '') {
             this.sendQuery(query);
+        }
+    },
+    
+    openHistory: function() {
+        console.log('[Query Panel] Opening conversation history');
+        
+        // Buscar el componente de historial
+        const historyPanel = document.querySelector('#conversation-history');
+        
+        if (historyPanel) {
+            // Hacer visible el panel de historial
+            historyPanel.setAttribute('visible', true);
+            
+            // Opcionalmente, ocultar el panel de query
+            // this.el.setAttribute('visible', false);
+            
+            this.updateStatus('Historial abierto', '#9B59B6');
+            
+            setTimeout(() => {
+                this.updateStatus('', '#888888');
+            }, 2000);
+        } else {
+            console.error('[Query Panel] History panel not found');
+            this.updateStatus('Error: Panel no encontrado', '#F44336');
         }
     },
     

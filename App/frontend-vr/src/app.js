@@ -3,6 +3,7 @@ import './components/agent-sphere.js';
 import './components/status-message.js';
 import './components/query-panel.js';
 import './components/agent-creator.js';
+import './components/conversation-history.js';
 import CONFIG from './config.js';
 import { showNotification } from './utils/helpers.js';
 import StateManager from './services/state-manager.js';
@@ -649,7 +650,12 @@ function initApp() {
     
     // Make app globally accessible for debugging
     window.vrApp = app;
+    
+    // Make apiClient globally accessible for components
+    window.apiClient = app.stateManager.apiClient;
+    
     console.log('[VRApp] App instance created and available as window.vrApp');
+    console.log('[VRApp] API client available as window.apiClient');
 }
 
 if (document.readyState === 'loading') {

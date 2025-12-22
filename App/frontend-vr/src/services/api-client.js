@@ -251,6 +251,94 @@ class APIClient {
     }
     
     /**
+     * Obtener todas las conversaciones
+     */
+    async getConversations() {
+        console.log('[APIClient] Getting conversations from:', `${this.baseURL}/conversations`);
+        
+        if (CONFIG.MOCK_MODE) {
+            await this.simulateDelay(300);
+            const mockConversations = {
+                total_conversations: 3,
+                conversations: {
+                    'conv-1': {
+                        conversation_id: 'conv-1',
+                        messages: [
+                            { role: 'user', content: '¿Cómo estás?', timestamp: '2025-12-22T10:00:00' },
+                            { role: 'assistant', content: 'Bien, gracias', timestamp: '2025-12-22T10:00:05' }
+                        ],
+                        created_at: '2025-12-22T10:00:00',
+                        updated_at: '2025-12-22T10:00:05'
+                    },
+                    'conv-2': {
+                        conversation_id: 'conv-2',
+                        messages: [
+                            { role: 'user', content: 'Cuéntame un chiste', timestamp: '2025-12-22T11:00:00' },
+                            { role: 'assistant', content: '¿Por qué...', timestamp: '2025-12-22T11:00:05' }
+                        ],
+                        created_at: '2025-12-22T11:00:00',
+                        updated_at: '2025-12-22T11:00:05'
+                    },
+                    'conv-3': {
+                        conversation_id: 'conv-3',
+                        messages: [
+                            { role: 'user', content: 'Explica Python', timestamp: '2025-12-22T12:00:00' },
+                            { role: 'assistant', content: 'Python es...', timestamp: '2025-12-22T12:00:05' }
+                        ],
+                        created_at: '2025-12-22T12:00:00',
+                        updated_at: '2025-12-22T12:00:05'
+                    }
+                }
+            };
+            console.log('[APIClient] Returning mock conversations:', mockConversations);
+            return mockConversations;
+        }
+        
+        try {
+            const response = await this.fetchWithRetry(`${this.baseURL}/conversations`);
+            const data = await response.json();
+            console.log('[APIClient] Conversations retrieved:', data);
+            return data;
+        } catch (error) {
+            console.error('[APIClient] Failed to get conversations:', error);
+            this.emit('error', error.message);
+            throw error;
+        }
+    }
+    
+    /**
+     * Obtener conversación específica por ID
+     */
+    async getConversation(conversationId) {
+        console.log('[APIClient] Getting conversation:', conversationId);
+        
+        if (CONFIG.MOCK_MODE) {
+            await this.simulateDelay(200);
+            const mockConv = {
+                conversation_id: conversationId,
+                messages: [
+                    { role: 'user', content: 'Mensaje 1', timestamp: '2025-12-22T10:00:00' },
+                    { role: 'assistant', content: 'Respuesta 1', timestamp: '2025-12-22T10:00:05' }
+                ],
+                created_at: '2025-12-22T10:00:00',
+                updated_at: '2025-12-22T10:00:05'
+            };
+            return mockConv;
+        }
+        
+        try {
+            const response = await this.fetchWithRetry(`${this.baseURL}/conversations/${conversationId}`);
+            const data = await response.json();
+            console.log('[APIClient] Conversation retrieved:', data);
+            return data;
+        } catch (error) {
+            console.error('[APIClient] Failed to get conversation:', error);
+            this.emit('error', error.message);
+            throw error;
+        }
+    }
+    
+    /**
      * Fetch con retry logic
      */
     async fetchWithRetry(url, options = {}, attempt = 1) {
