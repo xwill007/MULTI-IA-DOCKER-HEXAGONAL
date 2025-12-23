@@ -43,7 +43,7 @@ export const CONFIG = {
     // Agent Configuration
     AGENTS: {
         orbitRadius: 6,
-        orbitSpeed: 0.1,
+        orbitSpeed: 0.06,
         sphereRadius: 0.5,
         colors: {
             'llama3.2': '#4A90E2',

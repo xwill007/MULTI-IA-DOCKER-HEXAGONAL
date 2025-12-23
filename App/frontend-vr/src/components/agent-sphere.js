@@ -419,9 +419,10 @@ AFRAME.registerComponent('agent-sphere', {
         closeBtn.appendChild(closeText);
         closeBtn.setAttribute('position', '0.8 -0.5 0.02');
         panel.appendChild(closeBtn);
-        panel.appendChild(toggleBtn);
 
-        // Eventos
+        // Eventos - guardar referencia al componente
+        const component = this;
+        
         editBtn.addEventListener('click', async () => {
             try {
                 const nt = parseFloat(prompt('Nueva temperatura (0-1):', String(current.temperature)) || String(current.temperature));
@@ -430,17 +431,17 @@ AFRAME.registerComponent('agent-sphere', {
                 const config = { prompt: pr, options: { temperature: nt, num_predict: np } };
                 const sm = window.vrApp && window.vrApp.stateManager;
                 if (sm) {
-                    await sm.updateAgentConfig(this.data.agentId, config);
+                    await sm.updateAgentConfig(component.data.agentId, config);
                     // Regenerar textura
-                    const canvas = this.createPromptCanvas({
-                        name: this.data.agentName,
-                        model: this.data.model,
+                    const canvas = component.createPromptCanvas({
+                        name: component.data.agentName,
+                        model: component.data.model,
                         prompt: pr,
                         temperature: nt,
                         num_predict: np,
-                        color: this.modelColor
+                        color: component.modelColor
                     });
-                    this.sphere.setAttribute('material', { src: canvas, shader: 'standard' });
+                    component.sphere.setAttribute('material', { src: canvas, shader: 'standard' });
                     text.setAttribute('value', `temp: ${nt}\nnum_predict: ${np}`);
                     promptLabel.setAttribute('value', `Prompt: ${(pr || '').slice(0, 140)}...`);
                 }
@@ -449,8 +450,19 @@ AFRAME.registerComponent('agent-sphere', {
             }
         });
 
+        // Guardar referencia al panel
+        component.configPanel = panel;
+
         closeBtn.addEventListener('click', () => {
-            if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+            console.log('[Agent Sphere] Close button clicked');
+            if (component.configPanel) {
+                // Remove panel from the agent element directly
+                if (component.el.contains(component.configPanel)) {
+                    component.el.removeChild(component.configPanel);
+                }
+                component.configPanel = null;
+                console.log('[Agent Sphere] Config panel closed successfully');
+            }
         });
 
         // Toggle status event
@@ -461,7 +473,7 @@ AFRAME.registerComponent('agent-sphere', {
                     // DELETE endpoint togglea el status
                     const apiClient = sm.apiClient;
                     if (apiClient) {
-                        const response = await fetch(`${apiClient.baseURL}/agents/${this.data.agentId}`, {
+                        const response = await fetch(`${apiClient.baseURL}/agents/${component.data.agentId}`, {
                             method: 'DELETE'
                         });
                         if (response.ok) {
@@ -470,7 +482,7 @@ AFRAME.registerComponent('agent-sphere', {
                             
                             // Actualizar estado local
                             const agents = sm.state.agents.map(a => {
-                                if (a.id === this.data.agentId) {
+                                if (a.id === component.data.agentId) {
                                     return { ...a, status: newStatus };
                                 }
                                 return a;
@@ -485,15 +497,15 @@ AFRAME.registerComponent('agent-sphere', {
                             
                             // Actualizar esfera
                             if (newStatus === 'inactive') {
-                                this.sphere.setAttribute('opacity', 0.2);
-                                this.label.setAttribute('opacity', 0.3);
-                                this.modelLabel.setAttribute('opacity', 0.3);
-                                this.statusRing.setAttribute('opacity', 0.2);
+                                component.sphere.setAttribute('opacity', 0.2);
+                                component.label.setAttribute('opacity', 0.3);
+                                component.modelLabel.setAttribute('opacity', 0.3);
+                                component.statusRing.setAttribute('opacity', 0.2);
                             } else {
-                                this.sphere.setAttribute('opacity', 1);
-                                this.label.setAttribute('opacity', 1);
-                                this.modelLabel.setAttribute('opacity', 0.8);
-                                this.statusRing.setAttribute('opacity', 1);
+                                component.sphere.setAttribute('opacity', 1);
+                                component.label.setAttribute('opacity', 1);
+                                component.modelLabel.setAttribute('opacity', 0.8);
+                                component.statusRing.setAttribute('opacity', 1);
                             }
                             
                             console.log('[Agent Sphere] Status toggled to', newStatus);
