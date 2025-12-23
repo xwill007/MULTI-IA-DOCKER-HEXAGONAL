@@ -366,7 +366,7 @@ AFRAME.registerComponent('agent-sphere', {
         // Botón editar
         const editBtn = document.createElement('a-entity');
         const editBg = document.createElement('a-plane');
-        editBg.setAttribute('width', 0.9);
+        editBg.setAttribute('width', 0.8);
         editBg.setAttribute('height', 0.25);
         editBg.setAttribute('color', '#FF9800');
         editBg.setAttribute('class', 'clickable interactive');
@@ -376,28 +376,10 @@ AFRAME.registerComponent('agent-sphere', {
         editText.setAttribute('align', 'center');
         editText.setAttribute('position', '0 0 0.01');
         editText.setAttribute('color', '#000');
-        editText.setAttribute('width', 0.8);
+        editText.setAttribute('width', 0.7);
         editBtn.appendChild(editText);
-        editBtn.setAttribute('position', '-0.6 -0.5 0.02');
+        editBtn.setAttribute('position', '-0.8 -0.5 0.02');
         panel.appendChild(editBtn);
-
-        // Botón cerrar
-        const closeBtn = document.createElement('a-entity');
-        const closeBg = document.createElement('a-plane');
-        closeBg.setAttribute('width', 0.9);
-        closeBg.setAttribute('height', 0.25);
-        closeBg.setAttribute('color', '#9E9E9E');
-        closeBg.setAttribute('class', 'clickable interactive');
-        closeBtn.appendChild(closeBg);
-        const closeText = document.createElement('a-text');
-        closeText.setAttribute('value', 'CERRAR');
-        closeText.setAttribute('align', 'center');
-        closeText.setAttribute('position', '0 0 0.01');
-        closeText.setAttribute('color', '#000');
-        closeText.setAttribute('width', 0.8);
-        closeBtn.appendChild(closeText);
-        closeBtn.setAttribute('position', '0.6 -0.5 0.02');
-        panel.appendChild(closeBtn);
 
         // Botón activar/desactivar
         const toggleBtn = document.createElement('a-entity');
@@ -405,7 +387,7 @@ AFRAME.registerComponent('agent-sphere', {
         const currentStatus = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === this.data.agentId)?.status || this.data.status || 'active';
         const toggleColor = currentStatus === 'active' ? '#F44336' : '#4CAF50';
         const toggleLabel = currentStatus === 'active' ? 'DESACTIVAR' : 'ACTIVAR';
-        toggleBg.setAttribute('width', 0.9);
+        toggleBg.setAttribute('width', 0.8);
         toggleBg.setAttribute('height', 0.25);
         toggleBg.setAttribute('color', toggleColor);
         toggleBg.setAttribute('class', 'clickable interactive');
@@ -415,9 +397,28 @@ AFRAME.registerComponent('agent-sphere', {
         toggleText.setAttribute('align', 'center');
         toggleText.setAttribute('position', '0 0 0.01');
         toggleText.setAttribute('color', '#FFF');
-        toggleText.setAttribute('width', 0.8);
+        toggleText.setAttribute('width', 0.7);
         toggleBtn.appendChild(toggleText);
-        toggleBtn.setAttribute('position', '-0.6 -0.5 0.02');
+        toggleBtn.setAttribute('position', '0 -0.5 0.02');
+        panel.appendChild(toggleBtn);
+
+        // Botón cerrar
+        const closeBtn = document.createElement('a-entity');
+        const closeBg = document.createElement('a-plane');
+        closeBg.setAttribute('width', 0.8);
+        closeBg.setAttribute('height', 0.25);
+        closeBg.setAttribute('color', '#9E9E9E');
+        closeBg.setAttribute('class', 'clickable interactive');
+        closeBtn.appendChild(closeBg);
+        const closeText = document.createElement('a-text');
+        closeText.setAttribute('value', 'CERRAR');
+        closeText.setAttribute('align', 'center');
+        closeText.setAttribute('position', '0 0 0.01');
+        closeText.setAttribute('color', '#000');
+        closeText.setAttribute('width', 0.7);
+        closeBtn.appendChild(closeText);
+        closeBtn.setAttribute('position', '0.8 -0.5 0.02');
+        panel.appendChild(closeBtn);
         panel.appendChild(toggleBtn);
 
         // Eventos

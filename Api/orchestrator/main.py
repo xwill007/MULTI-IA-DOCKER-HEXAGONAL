@@ -562,18 +562,21 @@ async def get_orchestrator_response(query: str, conversation_history: list = [])
 async def query_agents(query: str) -> List[Dict[str, Any]]:
     """
     Consulta a todos los agentes activos en paralelo
+    Solo incluye agentes con status="active"
     """
-    logger.info(f"Querying {len(agents_db)} agents...")
+    # Filtrar solo agentes activos
+    active_agents = [agent for agent in agents_db.values() if agent.status == "active"]
+    
+    logger.info(f"Querying {len(active_agents)} active agents (total agents in db: {len(agents_db)})...")
     
     tasks = []
-    for agent in agents_db.values():
-        if agent.status == "active":
-            tasks.append(query_single_agent(agent, query))
+    for agent in active_agents:
+        tasks.append(query_single_agent(agent, query))
     
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     agents_responses = []
-    for agent, result in zip(agents_db.values(), results):
+    for agent, result in zip(active_agents, results):
         if isinstance(result, Exception):
             logger.error(f"Agent {agent.name} failed: {result}")
             agents_responses.append({
