@@ -101,6 +101,23 @@ class CreateAgentRequest(BaseModel):
 # Ollama endpoint - usar variable de entorno o default a contenedor Docker
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
+# Configuración del orquestador (editable)
+orchestrator_config: Dict[str, Any] = {
+    "model": "llama3.2",
+    "prompt": """Eres un orquestador de agentes IA. Tu función es:
+1. Analizar y comprender queries complejas
+2. Proporcionar respuestas iniciales basadas en tu conocimiento
+3. Coordinar agentes especializados cuando sea necesario
+4. Sintetizar información de múltiples fuentes
+5. Mantener contexto de conversación y evitar repetir respuestas
+
+Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, asegúrate de contar uno diferente cada vez.""",
+    "options": {
+        "temperature": 0.7,
+        "num_predict": 200
+    }
+}
+
 # In-memory storage (temporal)
 def _default_agent_config(model: str) -> Dict[str, Any]:
     system_prompts = {
@@ -287,6 +304,28 @@ async def update_agent(agent_id: str, payload: Dict[str, Any]):
     logger.info(f"Updated agent {agent_id}")
     return agent
 
+# Get orchestrator configuration
+@app.get("/orchestrator/config")
+async def get_orchestrator_config():
+    """Get current orchestrator configuration"""
+    return orchestrator_config
+
+# Update orchestrator configuration
+@app.patch("/orchestrator/config")
+async def update_orchestrator_config(payload: Dict[str, Any]):
+    """Update orchestrator configuration (prompt, model, options)"""
+    global orchestrator_config
+    
+    if "model" in payload:
+        orchestrator_config["model"] = payload["model"]
+    if "prompt" in payload:
+        orchestrator_config["prompt"] = payload["prompt"]
+    if "options" in payload and isinstance(payload["options"], dict):
+        orchestrator_config["options"] = {**orchestrator_config["options"], **payload["options"]}
+    
+    logger.info(f"Orchestrator config updated")
+    return orchestrator_config
+
 # Query endpoint - MAIN LOGIC
 @app.post("/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
@@ -370,18 +409,15 @@ async def process_query(request: QueryRequest):
 
 async def get_orchestrator_response(query: str, conversation_history: list = []) -> str:
     """
-    Genera respuesta del orquestador usando su propio modelo (llama3.2) con contexto de conversación
+    Genera respuesta del orquestador usando su propio modelo con contexto de conversación
+    Usa la configuración editable global orchestrator_config
     """
     logger.info("Getting orchestrator response...")
     
-    system_prompt = """Eres un orquestador de agentes IA. Tu función es:
-1. Analizar y comprender queries complejas
-2. Proporcionar respuestas iniciales basadas en tu conocimiento
-3. Coordinar agentes especializados cuando sea necesario
-4. Sintetizar información de múltiples fuentes
-5. Mantener contexto de conversación y evitar repetir respuestas
-
-Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, asegúrate de contar uno diferente cada vez."""
+    # Usar prompt de la configuración editable
+    system_prompt = orchestrator_config.get("prompt", "Eres un asistente útil.")
+    model = orchestrator_config.get("model", "llama3.2")
+    options = orchestrator_config.get("options", {"temperature": 0.7, "num_predict": 200})
     
     # Build conversation context
     context = system_prompt
@@ -399,13 +435,10 @@ Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, a
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
-                    "model": "llama3.2",
+                    "model": model,
                     "prompt": f"{context}\n\nUsuario: {query}\n\nOrquestador:",
                     "stream": False,
-                    "options": {
-                        "temperature": 0.7,
-                        "num_predict": 200
-                    }
+                    "options": options
                 }
             )
             

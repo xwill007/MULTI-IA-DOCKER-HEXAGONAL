@@ -23,7 +23,17 @@ AFRAME.registerComponent('orchestrator-hub', {
         sphere.setAttribute('roughness', 0.2);
         sphere.setAttribute('segments-height', 32);
         sphere.setAttribute('segments-width', 32);
+        sphere.setAttribute('class', 'clickable interactive');
         el.appendChild(sphere);
+        
+        // Event handlers para click
+        sphere.addEventListener('click', () => this.showConfigPanel());
+        sphere.addEventListener('mouseenter', () => {
+            sphere.setAttribute('scale', '1.1 1.1 1.1');
+        });
+        sphere.addEventListener('mouseleave', () => {
+            sphere.setAttribute('scale', '1 1 1');
+        });
         
         // Animación de rotación (lenta para facilitar lectura)
         sphere.setAttribute('animation__rotate', {
@@ -242,6 +252,149 @@ AFRAME.registerComponent('orchestrator-hub', {
                 easing: 'easeInOutQuad'
             });
         }
+    },
+
+    /**
+     * Mostrar panel de configuración del orquestador
+     */
+    showConfigPanel: async function() {
+        console.log('[Orchestrator Hub] Opening config panel');
+        
+        // Eliminar panel previo
+        const existing = this.el.querySelector('.orchestrator-config-panel');
+        if (existing) existing.parentNode.removeChild(existing);
+
+        // Obtener configuración actual del backend
+        let currentConfig = {
+            model: 'llama3.2',
+            prompt: 'Cargando...',
+            options: { temperature: 0.7, num_predict: 200 }
+        };
+
+        try {
+            const apiClient = window.apiClient || window.vrApp?.stateManager?.apiClient;
+            if (apiClient) {
+                const response = await fetch(`${apiClient.baseURL}/orchestrator/config`);
+                if (response.ok) {
+                    currentConfig = await response.json();
+                }
+            }
+        } catch (e) {
+            console.error('[Orchestrator Hub] Failed to load config:', e);
+        }
+
+        const panel = document.createElement('a-entity');
+        panel.setAttribute('class', 'orchestrator-config-panel');
+        panel.setAttribute('position', '0 -3 0');
+
+        const bg = document.createElement('a-plane');
+        bg.setAttribute('width', 3);
+        bg.setAttribute('height', 1.8);
+        bg.setAttribute('color', '#1a1a2e');
+        bg.setAttribute('opacity', 0.95);
+        panel.appendChild(bg);
+
+        const title = document.createElement('a-text');
+        title.setAttribute('value', 'Configurar Orquestador');
+        title.setAttribute('align', 'center');
+        title.setAttribute('position', '0 0.75 0.01');
+        title.setAttribute('color', this.data.color);
+        title.setAttribute('width', 2.8);
+        title.setAttribute('font', 'roboto');
+        panel.appendChild(title);
+
+        // Info actual
+        const infoText = document.createElement('a-text');
+        infoText.setAttribute('value', `Modelo: ${currentConfig.model}\nTemp: ${currentConfig.options.temperature}\nNum predict: ${currentConfig.options.num_predict}`);
+        infoText.setAttribute('align', 'left');
+        infoText.setAttribute('position', '-1.4 0.35 0.01');
+        infoText.setAttribute('color', '#CCCCCC');
+        infoText.setAttribute('width', 2.8);
+        panel.appendChild(infoText);
+
+        const promptLabel = document.createElement('a-text');
+        promptLabel.setAttribute('value', `Prompt:\n${(currentConfig.prompt || '').slice(0, 160)}...`);
+        promptLabel.setAttribute('align', 'left');
+        promptLabel.setAttribute('position', '-1.4 -0.05 0.01');
+        promptLabel.setAttribute('color', '#AAAAAA');
+        promptLabel.setAttribute('width', 2.8);
+        promptLabel.setAttribute('wrap-count', 60);
+        panel.appendChild(promptLabel);
+
+        // Botón editar
+        const editBtn = document.createElement('a-entity');
+        const editBg = document.createElement('a-plane');
+        editBg.setAttribute('width', 1.2);
+        editBg.setAttribute('height', 0.3);
+        editBg.setAttribute('color', this.data.color);
+        editBg.setAttribute('class', 'clickable interactive');
+        editBtn.appendChild(editBg);
+        const editText = document.createElement('a-text');
+        editText.setAttribute('value', 'EDITAR');
+        editText.setAttribute('align', 'center');
+        editText.setAttribute('position', '0 0 0.01');
+        editText.setAttribute('color', '#000');
+        editText.setAttribute('width', 1.0);
+        editBtn.appendChild(editText);
+        editBtn.setAttribute('position', '-0.7 -0.65 0.02');
+        panel.appendChild(editBtn);
+
+        // Botón cerrar
+        const closeBtn = document.createElement('a-entity');
+        const closeBg = document.createElement('a-plane');
+        closeBg.setAttribute('width', 1.2);
+        closeBg.setAttribute('height', 0.3);
+        closeBg.setAttribute('color', '#9E9E9E');
+        closeBg.setAttribute('class', 'clickable interactive');
+        closeBtn.appendChild(closeBg);
+        const closeText = document.createElement('a-text');
+        closeText.setAttribute('value', 'CERRAR');
+        closeText.setAttribute('align', 'center');
+        closeText.setAttribute('position', '0 0 0.01');
+        closeText.setAttribute('color', '#000');
+        closeText.setAttribute('width', 1.0);
+        closeBtn.appendChild(closeText);
+        closeBtn.setAttribute('position', '0.7 -0.65 0.02');
+        panel.appendChild(closeBtn);
+
+        // Eventos
+        editBtn.addEventListener('click', async () => {
+            try {
+                const newModel = prompt('Modelo (llama3.2, mistral, codellama):', currentConfig.model) || currentConfig.model;
+                const newTemp = parseFloat(prompt('Nueva temperatura (0-1):', String(currentConfig.options.temperature)) || String(currentConfig.options.temperature));
+                const newPredict = parseInt(prompt('Nuevo num_predict:', String(currentConfig.options.num_predict)) || String(currentConfig.options.num_predict), 10);
+                const newPrompt = prompt('Nuevo prompt del orquestador:', currentConfig.prompt) || currentConfig.prompt;
+                
+                const payload = {
+                    model: newModel,
+                    prompt: newPrompt,
+                    options: { temperature: newTemp, num_predict: newPredict }
+                };
+
+                const apiClient = window.apiClient || window.vrApp?.stateManager?.apiClient;
+                if (apiClient) {
+                    const response = await fetch(`${apiClient.baseURL}/orchestrator/config`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) {
+                        const updated = await response.json();
+                        infoText.setAttribute('value', `Modelo: ${updated.model}\nTemp: ${updated.options.temperature}\nNum predict: ${updated.options.num_predict}`);
+                        promptLabel.setAttribute('value', `Prompt:\n${(updated.prompt || '').slice(0, 160)}...`);
+                        console.log('[Orchestrator Hub] Config updated successfully');
+                    }
+                }
+            } catch (e) {
+                console.error('[Orchestrator Hub] Failed updating config:', e);
+            }
+        });
+
+        closeBtn.addEventListener('click', () => {
+            if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+        });
+
+        this.el.appendChild(panel);
     }
 });
 
