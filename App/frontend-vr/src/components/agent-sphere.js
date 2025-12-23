@@ -89,6 +89,14 @@ AFRAME.registerComponent('agent-sphere', {
         this.responsePanel = responsePanel;
         this.responseText = responseText;
 
+        // Aplicar opacity si el agente está inactivo
+        if (data.status === 'inactive') {
+            sphere.setAttribute('opacity', 0.2);
+            label.setAttribute('opacity', 0.3);
+            modelLabel.setAttribute('opacity', 0.3);
+            statusRing.setAttribute('opacity', 0.2);
+        }
+
         // Generar textura con prompt y parámetros sobre la esfera
         try {
             const info = getAgentPromptInfo(data.model);
@@ -391,6 +399,27 @@ AFRAME.registerComponent('agent-sphere', {
         closeBtn.setAttribute('position', '0.6 -0.5 0.02');
         panel.appendChild(closeBtn);
 
+        // Botón activar/desactivar
+        const toggleBtn = document.createElement('a-entity');
+        const toggleBg = document.createElement('a-plane');
+        const currentStatus = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === this.data.agentId)?.status || this.data.status || 'active';
+        const toggleColor = currentStatus === 'active' ? '#F44336' : '#4CAF50';
+        const toggleLabel = currentStatus === 'active' ? 'DESACTIVAR' : 'ACTIVAR';
+        toggleBg.setAttribute('width', 0.9);
+        toggleBg.setAttribute('height', 0.25);
+        toggleBg.setAttribute('color', toggleColor);
+        toggleBg.setAttribute('class', 'clickable interactive');
+        toggleBtn.appendChild(toggleBg);
+        const toggleText = document.createElement('a-text');
+        toggleText.setAttribute('value', toggleLabel);
+        toggleText.setAttribute('align', 'center');
+        toggleText.setAttribute('position', '0 0 0.01');
+        toggleText.setAttribute('color', '#FFF');
+        toggleText.setAttribute('width', 0.8);
+        toggleBtn.appendChild(toggleText);
+        toggleBtn.setAttribute('position', '-0.6 -0.5 0.02');
+        panel.appendChild(toggleBtn);
+
         // Eventos
         editBtn.addEventListener('click', async () => {
             try {
@@ -421,6 +450,58 @@ AFRAME.registerComponent('agent-sphere', {
 
         closeBtn.addEventListener('click', () => {
             if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+        });
+
+        // Toggle status event
+        toggleBtn.addEventListener('click', async () => {
+            try {
+                const sm = window.vrApp && window.vrApp.stateManager;
+                if (sm) {
+                    // DELETE endpoint togglea el status
+                    const apiClient = sm.apiClient;
+                    if (apiClient) {
+                        const response = await fetch(`${apiClient.baseURL}/agents/${this.data.agentId}`, {
+                            method: 'DELETE'
+                        });
+                        if (response.ok) {
+                            const result = await response.json();
+                            const newStatus = result.new_status;
+                            
+                            // Actualizar estado local
+                            const agents = sm.state.agents.map(a => {
+                                if (a.id === this.data.agentId) {
+                                    return { ...a, status: newStatus };
+                                }
+                                return a;
+                            });
+                            sm.updateState({ agents });
+                            
+                            // Actualizar visual del panel
+                            const newColor = newStatus === 'active' ? '#F44336' : '#4CAF50';
+                            const newLabel = newStatus === 'active' ? 'DESACTIVAR' : 'ACTIVAR';
+                            toggleBg.setAttribute('color', newColor);
+                            toggleText.setAttribute('value', newLabel);
+                            
+                            // Actualizar esfera
+                            if (newStatus === 'inactive') {
+                                this.sphere.setAttribute('opacity', 0.2);
+                                this.label.setAttribute('opacity', 0.3);
+                                this.modelLabel.setAttribute('opacity', 0.3);
+                                this.statusRing.setAttribute('opacity', 0.2);
+                            } else {
+                                this.sphere.setAttribute('opacity', 1);
+                                this.label.setAttribute('opacity', 1);
+                                this.modelLabel.setAttribute('opacity', 0.8);
+                                this.statusRing.setAttribute('opacity', 1);
+                            }
+                            
+                            console.log('[Agent Sphere] Status toggled to', newStatus);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Agent Sphere] Failed toggling status', e);
+            }
         });
 
         this.el.appendChild(panel);

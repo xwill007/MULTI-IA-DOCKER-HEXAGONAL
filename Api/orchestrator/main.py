@@ -13,6 +13,8 @@ import logging
 import os
 import uuid
 import sys
+import json
+from pathlib import Path
 
 # Ensure orchestrator and external Infrastructure paths are on sys.path for imports
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -31,6 +33,12 @@ from conversation_storage import (  # type: ignore # Docker mount at /ext/Infras
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Paths para persistencia
+DATA_DIR = Path("/data/agents") if os.path.exists("/data/agents") else Path("data/agents")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+AGENTS_FILE = DATA_DIR / "registry.json"
+ORCHESTRATOR_CONFIG_FILE = DATA_DIR / "orchestrator_config.json"
 
 
 def get_rule_based_response(query: str) -> str:
@@ -118,6 +126,31 @@ Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, a
     }
 }
 
+def load_orchestrator_config():
+    """Cargar configuración del orquestador desde archivo JSON"""
+    global orchestrator_config
+    try:
+        if ORCHESTRATOR_CONFIG_FILE.exists():
+            with open(ORCHESTRATOR_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+                orchestrator_config.update(loaded)
+                logger.info(f"Orchestrator config loaded from {ORCHESTRATOR_CONFIG_FILE}")
+        else:
+            # Guardar config por defecto
+            save_orchestrator_config()
+            logger.info("Created default orchestrator config file")
+    except Exception as e:
+        logger.error(f"Failed to load orchestrator config: {e}")
+
+def save_orchestrator_config():
+    """Guardar configuración del orquestador a archivo JSON"""
+    try:
+        with open(ORCHESTRATOR_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(orchestrator_config, f, indent=2, ensure_ascii=False)
+        logger.info(f"Orchestrator config saved to {ORCHESTRATOR_CONFIG_FILE}")
+    except Exception as e:
+        logger.error(f"Failed to save orchestrator config: {e}")
+
 # In-memory storage (temporal)
 def _default_agent_config(model: str) -> Dict[str, Any]:
     system_prompts = {
@@ -168,6 +201,40 @@ agents_db: Dict[str, Agent] = {
     )
 }
 
+def load_agents():
+    """Cargar agentes desde archivo JSON"""
+    global agents_db
+    try:
+        if AGENTS_FILE.exists():
+            with open(AGENTS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Convertir dict a Agent objects
+                agents_db = {
+                    agent_id: Agent(**agent_data)
+                    for agent_id, agent_data in data.items()
+                }
+                logger.info(f"Loaded {len(agents_db)} agents from {AGENTS_FILE}")
+        else:
+            # Guardar agentes por defecto
+            save_agents()
+            logger.info("Created default agents file")
+    except Exception as e:
+        logger.error(f"Failed to load agents: {e}")
+
+def save_agents():
+    """Guardar agentes a archivo JSON"""
+    try:
+        # Convertir Agent objects a dict
+        data = {
+            agent_id: agent.dict()
+            for agent_id, agent in agents_db.items()
+        }
+        with open(AGENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.info(f"Saved {len(agents_db)} agents to {AGENTS_FILE}")
+    except Exception as e:
+        logger.error(f"Failed to save agents: {e}")
+
 # Conversation history storage (in-memory)
 # Format: {conversation_id: [{"role": "user/assistant", "content": "...", "timestamp": "..."}]}
 # conversations_db: Dict[str, List[Dict[str, str]]] = {}  # Replaced by storage layer
@@ -200,6 +267,10 @@ def get_storage() -> ConversationStoragePort:
 
 # Global storage instance
 storage: ConversationStoragePort = get_storage()
+
+# Cargar configuraciones al inicio
+load_orchestrator_config()
+load_agents()
 
 # Health check
 @app.get("/health")
@@ -271,6 +342,9 @@ async def create_agent(request: CreateAgentRequest):
     agents_db[agent_id] = new_agent
     logger.info(f"Created agent: {agent_id} - {request.name}")
     
+    # Persistir cambios
+    save_agents()
+    
     return new_agent
 
 # Get single agent
@@ -302,7 +376,35 @@ async def update_agent(agent_id: str, payload: Dict[str, Any]):
     
     agents_db[agent_id] = agent
     logger.info(f"Updated agent {agent_id}")
+    
+    # Persistir cambios
+    save_agents()
+    
     return agent
+
+# Delete agent (soft delete - just change status)
+@app.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str):
+    """Soft delete: toggle agent status between active and inactive"""
+    if agent_id not in agents_db:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent = agents_db[agent_id]
+    # Toggle status
+    new_status = "inactive" if agent.status == "active" else "active"
+    agent.status = new_status
+    agents_db[agent_id] = agent
+    
+    logger.info(f"Agent {agent_id} status changed to {new_status}")
+    
+    # Persistir cambios
+    save_agents()
+    
+    return {
+        "message": f"Agent {agent_id} status changed to {new_status}",
+        "agent_id": agent_id,
+        "new_status": new_status
+    }
 
 # Get orchestrator configuration
 @app.get("/orchestrator/config")
@@ -324,6 +426,10 @@ async def update_orchestrator_config(payload: Dict[str, Any]):
         orchestrator_config["options"] = {**orchestrator_config["options"], **payload["options"]}
     
     logger.info(f"Orchestrator config updated")
+    
+    # Persistir cambios
+    save_orchestrator_config()
+    
     return orchestrator_config
 
 # Query endpoint - MAIN LOGIC
