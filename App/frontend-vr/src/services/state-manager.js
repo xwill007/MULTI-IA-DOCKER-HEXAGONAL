@@ -116,6 +116,30 @@ class StateManager {
             throw error;
         }
     }
+
+    /**
+     * Actualizar configuración del agente y refrescar estado
+     */
+    async updateAgentConfig(agentId, config) {
+        console.log('[StateManager] Updating agent config:', agentId, config);
+        this.updateState({ loading: true, error: null });
+        try {
+            const updated = await this.apiClient.updateAgentConfig(agentId, config);
+            // Merge into local state
+            const agents = this.state.agents.map(a => {
+                if (a.id === agentId) {
+                    return { ...a, config: { ...(a.config || {}), ...(config || {}) } };
+                }
+                return a;
+            });
+            this.updateState({ agents, loading: false });
+            return updated;
+        } catch (error) {
+            console.error('[StateManager] Failed to update agent config:', error);
+            this.updateState({ error: error.message, loading: false });
+            throw error;
+        }
+    }
     
     /**
      * Enviar query

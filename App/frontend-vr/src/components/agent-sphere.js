@@ -1,5 +1,6 @@
 import CONFIG from '../config.js';
 import { calculateOrbitPosition } from '../utils/helpers.js';
+import { getAgentPromptInfo } from '../utils/agent-prompts.js';
 
 /**
  * Componente Agent Sphere - Representa un agente IA
@@ -26,7 +27,6 @@ AFRAME.registerComponent('agent-sphere', {
         // Crear esfera del agente
         const sphere = document.createElement('a-sphere');
         sphere.setAttribute('radius', CONFIG.AGENTS.sphereRadius);
-        sphere.setAttribute('color', modelColor);
         sphere.setAttribute('metalness', 0.6);
         sphere.setAttribute('roughness', 0.3);
         sphere.setAttribute('class', 'clickable interactive');
@@ -88,6 +88,27 @@ AFRAME.registerComponent('agent-sphere', {
         this.modelColor = modelColor;
         this.responsePanel = responsePanel;
         this.responseText = responseText;
+
+        // Generar textura con prompt y parámetros sobre la esfera
+        try {
+            const info = getAgentPromptInfo(data.model);
+            const canvas = this.createPromptCanvas({
+                name: data.agentName,
+                model: data.model,
+                prompt: info.prompt,
+                temperature: info.temperature,
+                num_predict: info.num_predict,
+                color: modelColor
+            });
+            // Usar canvas como textura
+            this.sphere.setAttribute('material', {
+                src: canvas,
+                shader: 'standard'
+            });
+        } catch (e) {
+            // Fallback al color si algo falla
+            this.sphere.setAttribute('color', modelColor);
+        }
         
         // Event handlers
         el.addEventListener('click', this.onClick.bind(this));
@@ -102,6 +123,74 @@ AFRAME.registerComponent('agent-sphere', {
             dur: 500,
             easing: 'easeOutBack'
         });
+    },
+
+    // Crear canvas con texto envuelto y fondo estilizado
+    createPromptCanvas: function({ name, model, prompt, temperature, num_predict, color }) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Fondo degradado
+        const grad = ctx.createLinearGradient(0, 0, 512, 512);
+        grad.addColorStop(0, '#000000');
+        grad.addColorStop(1, '#1f1f1f');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Banda superior con color del modelo
+        ctx.fillStyle = color || '#4a90e2';
+        ctx.fillRect(0, 0, canvas.width, 64);
+
+        // Títulos
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText(`${name}`, 16, 36);
+        ctx.font = '16px Arial';
+        ctx.fillText(`Modelo: ${model}`, 16, 58);
+
+        // Parámetros
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('Parámetros', 16, 92);
+        ctx.font = '16px Arial';
+        ctx.fillText(`temperature: ${temperature}`, 16, 116);
+        ctx.fillText(`num_predict: ${num_predict}`, 16, 138);
+
+        // Prompt
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('Prompt', 16, 168);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#e0e0e0';
+        this.wrapText(ctx, prompt || 'Sin prompt disponible', 16, 192, 480, 22, 8);
+
+        return canvas;
+    },
+
+    // Utilidad para envolver texto en canvas
+    wrapText: function(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+        if (!text) return;
+        const words = text.split(' ');
+        let line = '';
+        let lineCount = 0;
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = ctx.measureText(testLine);
+            const testWidth = metrics.width;
+            if (testWidth > maxWidth && n > 0) {
+                ctx.fillText(line.trim(), x, y);
+                line = words[n] + ' ';
+                y += lineHeight;
+                lineCount++;
+                if (maxLines && lineCount >= maxLines) {
+                    ctx.fillText('…', x, y);
+                    return;
+                }
+            } else {
+                line = testLine;
+            }
+        }
+        ctx.fillText(line.trim(), x, y);
     },
     
     tick: function(time, deltaTime) {
@@ -203,6 +292,9 @@ AFRAME.registerComponent('agent-sphere', {
             model: this.data.model,
             status: this.data.status
         });
+
+        // Mostrar panel de configuración junto a la esfera
+        this.showConfigPanel();
     },
     
     onHover: function() {
@@ -213,6 +305,125 @@ AFRAME.registerComponent('agent-sphere', {
     onLeave: function() {
         this.sphere.setAttribute('scale', '1 1 1');
         this.label.setAttribute('scale', '1.5 1.5 1.5');
+    },
+
+    showConfigPanel: function() {
+        // Eliminar panel previo
+        const existing = this.el.querySelector('.agent-config-panel');
+        if (existing) existing.parentNode.removeChild(existing);
+
+        const panel = document.createElement('a-entity');
+        panel.setAttribute('class', 'agent-config-panel');
+        panel.setAttribute('position', '0 -1.6 0');
+
+        const bg = document.createElement('a-plane');
+        bg.setAttribute('width', 2.2);
+        bg.setAttribute('height', 1.4);
+        bg.setAttribute('color', '#121212');
+        bg.setAttribute('opacity', 0.9);
+        panel.appendChild(bg);
+
+        const title = document.createElement('a-text');
+        title.setAttribute('value', 'Configurar agente');
+        title.setAttribute('align', 'center');
+        title.setAttribute('position', '0 0.55 0.01');
+        title.setAttribute('color', '#FFFFFF');
+        title.setAttribute('width', 2.0);
+        panel.appendChild(title);
+
+        // Mostrar parámetros actuales
+        const info = getAgentPromptInfo(this.data.model);
+        const conf = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === this.data.agentId)?.config || {};
+        const current = {
+            prompt: conf.prompt || info.prompt,
+            temperature: (conf.options && conf.options.temperature) || info.temperature || 0.7,
+            num_predict: (conf.options && conf.options.num_predict) || info.num_predict || 150
+        };
+        const text = document.createElement('a-text');
+        text.setAttribute('value', `temp: ${current.temperature}\nnum_predict: ${current.num_predict}`);
+        text.setAttribute('align', 'left');
+        text.setAttribute('position', '-1 0.25 0.01');
+        text.setAttribute('color', '#CCCCCC');
+        text.setAttribute('width', 2.0);
+        panel.appendChild(text);
+
+        const promptLabel = document.createElement('a-text');
+        promptLabel.setAttribute('value', `Prompt: ${(current.prompt || '').slice(0, 140)}...`);
+        promptLabel.setAttribute('align', 'left');
+        promptLabel.setAttribute('position', '-1 -0.05 0.01');
+        promptLabel.setAttribute('color', '#CCCCCC');
+        promptLabel.setAttribute('width', 2.0);
+        panel.appendChild(promptLabel);
+
+        // Botón editar
+        const editBtn = document.createElement('a-entity');
+        const editBg = document.createElement('a-plane');
+        editBg.setAttribute('width', 0.9);
+        editBg.setAttribute('height', 0.25);
+        editBg.setAttribute('color', '#FF9800');
+        editBg.setAttribute('class', 'clickable interactive');
+        editBtn.appendChild(editBg);
+        const editText = document.createElement('a-text');
+        editText.setAttribute('value', 'EDITAR');
+        editText.setAttribute('align', 'center');
+        editText.setAttribute('position', '0 0 0.01');
+        editText.setAttribute('color', '#000');
+        editText.setAttribute('width', 0.8);
+        editBtn.appendChild(editText);
+        editBtn.setAttribute('position', '-0.6 -0.5 0.02');
+        panel.appendChild(editBtn);
+
+        // Botón cerrar
+        const closeBtn = document.createElement('a-entity');
+        const closeBg = document.createElement('a-plane');
+        closeBg.setAttribute('width', 0.9);
+        closeBg.setAttribute('height', 0.25);
+        closeBg.setAttribute('color', '#9E9E9E');
+        closeBg.setAttribute('class', 'clickable interactive');
+        closeBtn.appendChild(closeBg);
+        const closeText = document.createElement('a-text');
+        closeText.setAttribute('value', 'CERRAR');
+        closeText.setAttribute('align', 'center');
+        closeText.setAttribute('position', '0 0 0.01');
+        closeText.setAttribute('color', '#000');
+        closeText.setAttribute('width', 0.8);
+        closeBtn.appendChild(closeText);
+        closeBtn.setAttribute('position', '0.6 -0.5 0.02');
+        panel.appendChild(closeBtn);
+
+        // Eventos
+        editBtn.addEventListener('click', async () => {
+            try {
+                const nt = parseFloat(prompt('Nueva temperatura (0-1):', String(current.temperature)) || String(current.temperature));
+                const np = parseInt(prompt('Nuevo num_predict:', String(current.num_predict)) || String(current.num_predict), 10);
+                const pr = prompt('Nuevo prompt:', current.prompt) || current.prompt;
+                const config = { prompt: pr, options: { temperature: nt, num_predict: np } };
+                const sm = window.vrApp && window.vrApp.stateManager;
+                if (sm) {
+                    await sm.updateAgentConfig(this.data.agentId, config);
+                    // Regenerar textura
+                    const canvas = this.createPromptCanvas({
+                        name: this.data.agentName,
+                        model: this.data.model,
+                        prompt: pr,
+                        temperature: nt,
+                        num_predict: np,
+                        color: this.modelColor
+                    });
+                    this.sphere.setAttribute('material', { src: canvas, shader: 'standard' });
+                    text.setAttribute('value', `temp: ${nt}\nnum_predict: ${np}`);
+                    promptLabel.setAttribute('value', `Prompt: ${(pr || '').slice(0, 140)}...`);
+                }
+            } catch (e) {
+                console.error('Failed updating config', e);
+            }
+        });
+
+        closeBtn.addEventListener('click', () => {
+            if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+        });
+
+        this.el.appendChild(panel);
     },
     
     remove: function() {

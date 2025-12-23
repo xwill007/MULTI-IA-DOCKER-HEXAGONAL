@@ -157,6 +157,35 @@ class APIClient {
             throw error;
         }
     }
+
+    /**
+     * Actualizar configuración del agente
+     */
+    async updateAgentConfig(agentId, config) {
+        console.log('[APIClient] Updating agent config:', agentId, config);
+        
+        if (CONFIG.MOCK_MODE) {
+            await this.simulateDelay(500);
+            return { id: agentId, config };
+        }
+
+        try {
+            const response = await this.fetchWithRetry(`${this.baseURL}/agents/${agentId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ config })
+            });
+            const data = await response.json();
+            console.log('[APIClient] Agent updated:', data);
+            return data;
+        } catch (error) {
+            console.error('[APIClient] Failed to update agent:', error);
+            this.emit('error', error.message);
+            throw error;
+        }
+    }
     
     /**
      * Enviar query al orchestrator

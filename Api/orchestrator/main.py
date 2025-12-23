@@ -75,6 +75,8 @@ class Agent(BaseModel):
     status: str = "idle"
     capabilities: List[str] = []
     endpoint: Optional[str] = None
+    # Configuración editable por agente (prompt y opciones del modelo)
+    config: Dict[str, Any] = {}
 
 class QueryRequest(BaseModel):
     query: str
@@ -100,6 +102,20 @@ class CreateAgentRequest(BaseModel):
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # In-memory storage (temporal)
+def _default_agent_config(model: str) -> Dict[str, Any]:
+    system_prompts = {
+        "codellama": "Eres un experto en análisis de código. Proporciona respuestas técnicas y precisas sobre programación, arquitectura y calidad de código.",
+        "mistral": "Eres un analista de datos especializado. Enfócate en análisis, estadísticas y visualización de información.",
+        "llama3.2": "Eres un agente conversacional general. Proporciona respuestas útiles y contextualmente relevantes."
+    }
+    return {
+        "prompt": system_prompts.get(model, "Eres un asistente especializado."),
+        "options": {
+            "temperature": 0.5 if model == "codellama" else 0.7,
+            "num_predict": 150
+        }
+    }
+
 agents_db: Dict[str, Agent] = {
     "agent-001": Agent(
         id="agent-001",
@@ -107,7 +123,8 @@ agents_db: Dict[str, Agent] = {
         model="codellama",
         status="active",
         capabilities=["code_analysis", "quality_check", "refactoring"],
-        endpoint=OLLAMA_BASE_URL
+        endpoint=OLLAMA_BASE_URL,
+        config=_default_agent_config("codellama")
     ),
     "agent-002": Agent(
         id="agent-002",
@@ -115,7 +132,8 @@ agents_db: Dict[str, Agent] = {
         model="mistral",
         status="active",
         capabilities=["data_analysis", "statistics", "visualization"],
-        endpoint=OLLAMA_BASE_URL
+        endpoint=OLLAMA_BASE_URL,
+        config=_default_agent_config("mistral")
     ),
     "agent-003": Agent(
         id="agent-003",
@@ -123,7 +141,8 @@ agents_db: Dict[str, Agent] = {
         model="llama3.2",
         status="active",
         capabilities=["conversation", "general_knowledge", "coordination"],
-        endpoint=OLLAMA_BASE_URL
+        endpoint=OLLAMA_BASE_URL,
+        config=_default_agent_config("llama3.2")
     )
 }
 
@@ -223,13 +242,45 @@ async def create_agent(request: CreateAgentRequest):
         model=request.model,
         status="active",
         capabilities=request.capabilities,
-        endpoint=OLLAMA_BASE_URL
+        endpoint=OLLAMA_BASE_URL,
+        config=_default_agent_config(request.model)
     )
     
     agents_db[agent_id] = new_agent
     logger.info(f"Created agent: {agent_id} - {request.name}")
     
     return new_agent
+
+# Get single agent
+@app.get("/agents/{agent_id}", response_model=Agent)
+async def get_agent(agent_id: str):
+    agent = agents_db.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+# Update agent configuration or metadata
+@app.patch("/agents/{agent_id}", response_model=Agent)
+async def update_agent(agent_id: str, payload: Dict[str, Any]):
+    agent = agents_db.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Update editable fields
+    if "name" in payload:
+        agent.name = payload["name"]
+    if "status" in payload:
+        agent.status = payload["status"]
+    if "capabilities" in payload and isinstance(payload["capabilities"], list):
+        agent.capabilities = payload["capabilities"]
+    if "config" in payload and isinstance(payload["config"], dict):
+        # Merge config shallowly
+        new_conf = {**agent.config, **payload["config"]}
+        agent.config = new_conf
+    
+    agents_db[agent_id] = agent
+    logger.info(f"Updated agent {agent_id}")
+    return agent
 
 # Query endpoint - MAIN LOGIC
 @app.post("/query", response_model=QueryResponse)
@@ -400,14 +451,10 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
     start_time = asyncio.get_event_loop().time()
     logger.info(f"Querying agent: {agent.name} ({agent.model})")
     
-    # System prompt específico por tipo de agente
-    system_prompts = {
-        "codellama": "Eres un experto en análisis de código. Proporciona respuestas técnicas y precisas sobre programación, arquitectura y calidad de código.",
-        "mistral": "Eres un analista de datos especializado. Enfócate en análisis, estadísticas y visualización de información.",
-        "llama3.2": "Eres un agente conversacional general. Proporciona respuestas útiles y contextualmente relevantes."
-    }
-    
-    system_prompt = system_prompts.get(agent.model, "Eres un asistente especializado.")
+    # Prompt y opciones provenientes de la configuración editable
+    conf = agent.config or {}
+    system_prompt = conf.get("prompt") or _default_agent_config(agent.model)["prompt"]
+    options = conf.get("options") or _default_agent_config(agent.model)["options"]
     
     try:
         # Timeout más largo para permitir carga inicial del modelo
@@ -419,10 +466,7 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
                     "model": agent.model,
                     "prompt": f"{system_prompt}\n\nQuery: {query}\n\nRespuesta:",
                     "stream": False,
-                    "options": {
-                        "temperature": 0.5 if agent.model == "codellama" else 0.7,
-                        "num_predict": 150
-                    }
+                    "options": options
                 }
             )
             
