@@ -104,10 +104,15 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 # In-memory storage (temporal)
 def _default_agent_config(model: str) -> Dict[str, Any]:
     system_prompts = {
-        "codellama": "Eres un experto en análisis de código. Proporciona respuestas técnicas y precisas sobre programación, arquitectura y calidad de código.",
-        "mistral": "Eres un analista de datos especializado. Enfócate en análisis, estadísticas y visualización de información.",
-        "llama3.2": "Eres un agente conversacional general. Proporciona respuestas útiles y contextualmente relevantes."
+        "codellama": "Eres un experto en Trading de Criptomonedas. Proporciona predicciones de compra y venta basandote en calculos matematicos estadisticos, solicita lo que te falte para una prediccion mas acertada.",
+        #"Eres un experto en análisis de código. Proporciona respuestas técnicas y precisas sobre programación, arquitectura y calidad de código.",
+        "mistral": "Eres un analista de datos Historicos especializado. Enfócate en análisis de tendencias repetitivas en los valores de criptomonedas que permita predecir valores futuros o desiciones de compra y venta.",
+        #"Eres un analista de datos especializado. Enfócate en análisis, estadísticas y visualización de información.",
+        "llama3.2": "Eres un investigador de noticias para identificar cambios de precios en Criptomonedas. Proporciona sugerencias de compra y venta basandote en hechos actuales."
+        #"Eres un agente conversacional general. Proporciona respuestas útiles y contextualmente relevantes."
     }
+    
+    
     return {
         "prompt": system_prompts.get(model, "Eres un asistente especializado."),
         "options": {
