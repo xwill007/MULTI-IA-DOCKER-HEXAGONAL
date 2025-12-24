@@ -1,6 +1,11 @@
 import CONFIG from '../config.js';
 import { calculateOrbitPosition } from '../utils/helpers.js';
+import { createLogger } from '../utils/logs.js';
 import { getAgentPromptInfo } from '../utils/agent-prompts.js';
+
+// Per-file logging control (undefined = use global)
+const ShowLogs = undefined;
+const log = createLogger('[Agent Sphere]', ShowLogs);
 
 /**
  * Componente Agent Sphere - Representa un agente IA
@@ -282,7 +287,16 @@ AFRAME.registerComponent('agent-sphere', {
     },
     
     onClick: function() {
-        console.log('Agent clicked:', this.data.agentId);
+        log('Agent clicked:', this.data.agentId);
+        
+        // Verificar si el panel ya existe
+        const existing = this.el.querySelector('.agent-config-panel');
+        if (existing) {
+            // Si existe, cerrarlo (remover)
+            log('Closing existing config panel');
+            this.el.removeChild(existing);
+            return;
+        }
         
         this.el.setAttribute('animation__click', {
             property: 'scale',
@@ -363,6 +377,9 @@ AFRAME.registerComponent('agent-sphere', {
         promptLabel.setAttribute('width', 2.0);
         panel.appendChild(promptLabel);
 
+        // Guardar referencia al componente al inicio
+        const component = this;
+
         // Botón editar
         const editBtn = document.createElement('a-entity');
         const editBg = document.createElement('a-plane');
@@ -418,11 +435,22 @@ AFRAME.registerComponent('agent-sphere', {
         closeText.setAttribute('width', 0.7);
         closeBtn.appendChild(closeText);
         closeBtn.setAttribute('position', '0.8 -0.5 0.02');
+        
+        // Event listener para CERRAR button - en el closeBg (el a-plane)
+        closeBg.addEventListener('click', (evt) => {
+            log('Close button clicked via closeBg');
+            evt.stopPropagation();
+            // Remover el panel directamente
+            const panelToRemove = component.el.querySelector('.agent-config-panel');
+            if (panelToRemove) {
+                component.el.removeChild(panelToRemove);
+                log('Panel removed successfully');
+            }
+        });
+        
         panel.appendChild(closeBtn);
 
-        // Eventos - guardar referencia al componente
-        const component = this;
-        
+        // Eventos - agregar listeners de editar y toggle
         editBtn.addEventListener('click', async () => {
             try {
                 const nt = parseFloat(prompt('Nueva temperatura (0-1):', String(current.temperature)) || String(current.temperature));
@@ -452,18 +480,6 @@ AFRAME.registerComponent('agent-sphere', {
 
         // Guardar referencia al panel
         component.configPanel = panel;
-
-        closeBtn.addEventListener('click', () => {
-            console.log('[Agent Sphere] Close button clicked');
-            if (component.configPanel) {
-                // Remove panel from the agent element directly
-                if (component.el.contains(component.configPanel)) {
-                    component.el.removeChild(component.configPanel);
-                }
-                component.configPanel = null;
-                console.log('[Agent Sphere] Config panel closed successfully');
-            }
-        });
 
         // Toggle status event
         toggleBtn.addEventListener('click', async () => {
@@ -508,7 +524,7 @@ AFRAME.registerComponent('agent-sphere', {
                                 component.statusRing.setAttribute('opacity', 1);
                             }
                             
-                            console.log('[Agent Sphere] Status toggled to', newStatus);
+                            log('Status toggled to', newStatus);
                         }
                     }
                 }

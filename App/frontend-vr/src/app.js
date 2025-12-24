@@ -7,6 +7,11 @@ import './components/conversation-history.js';
 import CONFIG from './config.js';
 import { showNotification } from './utils/helpers.js';
 import StateManager from './services/state-manager.js';
+import { createLogger } from './utils/logs.js';
+
+// Per-file logging override; set to true/false to force, or undefined to use global
+const ShowLogs = undefined;
+const log = createLogger('[VRApp]', ShowLogs);
 
 /**
  * Aplicación principal VR
@@ -27,12 +32,12 @@ class VRApp {
      * Inicializar aplicación
      */
     async init() {
-        console.log('[VRApp] Initializing...');
+        log('Initializing...');
         
         // Esperar a que el scene esté listo
         await this.waitForScene();
         
-        console.log('[VRApp] Scene ready');
+        log('Scene ready');
         
         // Referencias a elementos
         this.scene = document.querySelector('a-scene');
@@ -43,7 +48,7 @@ class VRApp {
         this.loadingScreen = document.querySelector('#loading-screen');
         this.connectionStatus = document.querySelector('#connection-status');
         
-        console.log('[VRApp] Elements found:', {
+        log('Elements found:', {
             scene: !!this.scene,
             orchestrator: !!this.orchestratorHub,
             agentsContainer: !!this.agentsContainer
@@ -59,7 +64,7 @@ class VRApp {
         await this.initialLoad();
         
         this.initialized = true;
-        console.log('[VRApp] Initialized successfully');
+        log('Initialized successfully');
     }
     
     /**
@@ -83,7 +88,7 @@ class VRApp {
      * Carga inicial
      */
     async initialLoad() {
-        console.log('[VRApp] Initial load starting...');
+        log('Initial load starting...');
         
         // Mostrar loading screen
         this.showLoading(true);
@@ -92,13 +97,13 @@ class VRApp {
             // Intentar cargar agentes
             await this.stateManager.loadAgents();
             
-            console.log('[VRApp] Agents loaded successfully');
+            log('Agents loaded successfully');
             
             // Si llegamos aquí, la conexión fue exitosa
             this.updateConnectionStatus(true);
             
         } catch (error) {
-            console.error('[VRApp] Initial load failed:', error);
+            log.error('Initial load failed:', error);
             this.updateConnectionStatus(false);
             
             // Mostrar notificación
@@ -110,7 +115,7 @@ class VRApp {
         } finally {
             // Ocultar loading screen
             setTimeout(() => {
-                console.log('[VRApp] Hiding loading screen');
+                log('Hiding loading screen');
                 this.showLoading(false);
             }, 500);
         }
@@ -149,12 +154,12 @@ class VRApp {
         // VR mode change
         if (this.scene) {
             this.scene.addEventListener('enter-vr', () => {
-                console.log('[VRApp] Entered VR mode');
+                log('Entered VR mode');
                 this.showSimpleNotification('VR Mode Active', 'success');
             });
             
             this.scene.addEventListener('exit-vr', () => {
-                console.log('[VRApp] Exited VR mode');
+                log('Exited VR mode');
             });
         }
     }
@@ -163,7 +168,7 @@ class VRApp {
      * Cambios en el state
      */
     onStateChange(state) {
-        console.log('[VRApp] State changed:', state);
+        log('State changed:', state);
         
         // Update connection status
         this.updateConnectionStatus(state.connected);
@@ -200,7 +205,7 @@ class VRApp {
             return;
         }
         
-        console.log(`[VRApp] Updating ${agents.length} agents`);
+        log(`Updating ${agents.length} agents`);
         
         const currentAgentIds = new Set(agents.map(a => a.id));
         
@@ -236,7 +241,7 @@ class VRApp {
                 this.agentsContainer.appendChild(agentElement);
                 this.agentElements.set(agent.id, agentElement);
                 
-                console.log(`[VRApp] Created agent: ${agent.name}`);
+                log(`Created agent: ${agent.name}`);
                 
             } else {
                 // Actualizar agente existente
@@ -257,7 +262,7 @@ class VRApp {
      * Handle query submit
      */
     async handleQuerySubmit(query) {
-        console.log('[VRApp] Query submitted:', query);
+        log('Query submitted:', query);
         
         // Pulse orchestrator and start timer
         if (this.orchestratorHub && this.orchestratorHub.components['orchestrator-hub']) {
@@ -310,10 +315,10 @@ class VRApp {
                 this.showSimpleNotification('Query processed successfully', 'success');
             }
             
-            console.log('[VRApp] Query result:', result);
+            log('Query result:', result);
         } catch (error) {
             this.showSimpleNotification('Failed to send query: ' + error.message, 'error');
-            console.error('[VRApp] Query error:', error);
+            log.error('Query error:', error);
         } finally {
             // Stop timer
             if (this.orchestratorHub && this.orchestratorHub.components['orchestrator-hub']) {
@@ -528,15 +533,15 @@ class VRApp {
      * Handle agent creation
      */
     async handleAgentCreate(agentData) {
-        console.log('[VRApp] Creating agent:', agentData);
+        log('Creating agent:', agentData);
         
         try {
             const newAgent = await this.stateManager.createAgent(agentData);
             this.showSimpleNotification(`Agent "${agentData.name}" created`, 'success');
-            console.log('[VRApp] Agent created:', newAgent);
+            log('Agent created:', newAgent);
         } catch (error) {
             this.showSimpleNotification('Failed to create agent', 'error');
-            console.error('[VRApp] Create agent error:', error);
+            log.error('Create agent error:', error);
         }
     }
     
@@ -544,7 +549,7 @@ class VRApp {
      * Handle agent selection
      */
     handleAgentSelect(agentInfo) {
-        console.log('[VRApp] Agent selected:', agentInfo);
+        log('Agent selected:', agentInfo);
         this.stateManager.selectAgent(agentInfo.agentId);
         
         this.showSimpleNotification(
@@ -630,7 +635,7 @@ class VRApp {
      * Show simple notification
      */
     showSimpleNotification(message, type) {
-        console.log(`[VRApp] Notification [${type}]: ${message}`);
+        log(`Notification [${type}]: ${message}`);
         // Intentar usar el sistema de notificaciones VR si está disponible
         if (this.scene && this.scene.systems['status-messages']) {
             this.scene.systems['status-messages'].showMessage(message, type, 3000);
@@ -639,13 +644,13 @@ class VRApp {
 }
 
 // Initialize app when DOM is ready
-console.log('[VRApp] Script loaded, waiting for DOM...');
+log('Script loaded, waiting for DOM...');
 
 function initApp() {
-    console.log('[VRApp] DOM ready, creating app instance...');
+    log('DOM ready, creating app instance...');
     const app = new VRApp();
     app.init().catch(error => {
-        console.error('[VRApp] Failed to initialize:', error);
+        log.error('Failed to initialize:', error);
     });
     
     // Make app globally accessible for debugging
@@ -654,8 +659,8 @@ function initApp() {
     // Make apiClient globally accessible for components
     window.apiClient = app.stateManager.apiClient;
     
-    console.log('[VRApp] App instance created and available as window.vrApp');
-    console.log('[VRApp] API client available as window.apiClient');
+    log('App instance created and available as window.vrApp');
+    log('API client available as window.apiClient');
 }
 
 if (document.readyState === 'loading') {

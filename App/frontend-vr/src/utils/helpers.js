@@ -2,6 +2,7 @@
  * Utilidades para VR
  */
 
+
 /**
  * Genera un color a partir de un string
  */
@@ -94,24 +95,23 @@ export function showNotification(message, type = 'info', duration = 3000) {
 }
 
 /**
- * Detectar si está en modo VR
+ * Crear entity con propiedades comunes
  */
-export function isVRMode() {
-    const scene = document.querySelector('a-scene');
-    return scene && scene.is('vr-mode');
+export function createEntity(properties = {}) {
+    const entity = document.createElement('a-entity');
+    Object.keys(properties).forEach(key => {
+        entity.setAttribute(key, properties[key]);
+    });
+    return entity;
 }
 
-/**
- * Formatear fecha
- */
-export function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-}
-
-/**
- * Generar ID único
- */
-export function generateId() {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
+export default {
+    stringToColor,
+    calculateOrbitPosition,
+    lerp,
+    clamp,
+    createTextWithBackground,
+    animateProperty,
+    showNotification,
+    createEntity
+};

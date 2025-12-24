@@ -1,4 +1,9 @@
 import CONFIG from '../config.js';
+import { createLogger } from '../utils/logs.js';
+
+// Control de logs para este servicio (undefined = usa global)
+const ShowLogs = undefined;
+const log = createLogger('[APIClient]', ShowLogs);
 
 /**
  * Cliente HTTP para comunicación con la API del orchestrator
@@ -13,7 +18,7 @@ class APIClient {
         this.listeners = new Map();
         this.logs = [];  // In-memory log store
         
-        console.log('[APIClient] Initialized', {
+        log('Initialized', {
             baseURL: this.baseURL,
             mockMode: CONFIG.MOCK_MODE
         });
@@ -36,7 +41,7 @@ class APIClient {
      */
     async checkConnection() {
         if (CONFIG.MOCK_MODE) {
-            console.log('[APIClient] Mock mode enabled, simulating connection');
+            log('Mock mode enabled, simulating connection');
             this.addLog('[APIClient] Mock mode enabled');
             this.connected = true;
             this.emit('connectionChange', true);
@@ -45,7 +50,7 @@ class APIClient {
         
         try {
             const checkLog = `Checking connection to ${this.baseURL}/health`;
-            console.log('[APIClient] ' + checkLog);
+            log(checkLog);
             this.addLog('[APIClient] ' + checkLog);
             
             const response = await this.fetchWithTimeout(`${this.baseURL}/health`, {
@@ -53,7 +58,7 @@ class APIClient {
             });
             
             const resultLog = `Health check response status: ${response.status}`;
-            console.log('[APIClient] ' + resultLog);
+            log(resultLog);
             this.addLog('[APIClient] ' + resultLog);
             
             this.connected = response.ok;
@@ -61,7 +66,7 @@ class APIClient {
             return this.connected;
         } catch (error) {
             const errorLog = `Connection check failed: ${error.message}`;
-            console.error('[APIClient] ' + errorLog);
+            log.error(errorLog);
             this.addLog('[APIClient] ERROR: ' + errorLog);
             this.connected = false;
             this.emit('connectionChange', false);
@@ -74,13 +79,13 @@ class APIClient {
      */
     async getAgents() {
         const logEntry = `[${new Date().toISOString()}] [APIClient] Getting agents from: ${this.baseURL}/agents`;
-        console.log(logEntry);
+        log(logEntry);
         this.addLog(logEntry);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(500);
             const agents = CONFIG.MOCK_DATA.agents;
-            console.log('[APIClient] Returning mock agents:', agents);
+            log('Returning mock agents:', agents);
             this.emit('agentsUpdate', agents);
             return agents;
         }
@@ -88,33 +93,33 @@ class APIClient {
         try {
             const response = await this.fetchWithRetry(`${this.baseURL}/agents`);
             const statusLog = `Response status: ${response.status} ${response.statusText}`;
-            console.log('[APIClient] ' + statusLog);
+            log(statusLog);
             this.addLog('[APIClient] ' + statusLog);
             
             const headerLog = `Headers: content-type=${response.headers.get('content-type')}, content-length=${response.headers.get('content-length')}, ok=${response.ok}`;
-            console.log('[APIClient] ' + headerLog);
+            log(headerLog);
             this.addLog('[APIClient] ' + headerLog);
             
             const text = await response.text();
             const textLog = `Raw response (first 300 chars): ${text.substring(0, 300)}`;
-            console.log('[APIClient] ' + textLog);
+            log(textLog);
             this.addLog('[APIClient] ' + textLog);
             
             const data = JSON.parse(text);
-            console.log('[APIClient] Agents received:', data);
+            log('Agents received:', data);
             this.addLog('[APIClient] Agents parsed successfully');
             
             // Backend returns List[Agent] directly as JSON array
             const agents = Array.isArray(data) ? data : (data.agents || data);
             const agentCountLog = `Parsed agents count: ${agents.length || agents}`;
-            console.log('[APIClient] ' + agentCountLog);
+            log(agentCountLog);
             this.addLog('[APIClient] ' + agentCountLog);
             
             this.emit('agentsUpdate', agents);
             return agents;
         } catch (error) {
             const errorLog = `ERROR: ${error.message}, Stack: ${error.stack}`;
-            console.error('[APIClient] Failed to get agents:', errorLog);
+            log.error('Failed to get agents:', errorLog);
             this.addLog('[APIClient] FAILED: ' + errorLog);
             this.emit('error', `Failed to load agents: ${error.message}`);
             throw error;
@@ -125,7 +130,7 @@ class APIClient {
      * Crear un nuevo agente
      */
     async createAgent(agentData) {
-        console.log('[APIClient] Creating agent:', agentData);
+        log('Creating agent:', agentData);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(1000);
@@ -135,7 +140,7 @@ class APIClient {
                 status: 'idle',
                 created_at: new Date().toISOString()
             };
-            console.log('[APIClient] Mock agent created:', newAgent);
+            log('Mock agent created:', newAgent);
             return newAgent;
         }
         
@@ -149,10 +154,10 @@ class APIClient {
             });
             
             const data = await response.json();
-            console.log('[APIClient] Agent created:', data);
+            log('Agent created:', data);
             return data;
         } catch (error) {
-            console.error('[APIClient] Failed to create agent:', error);
+            log.error('Failed to create agent:', error);
             this.emit('error', error.message);
             throw error;
         }
@@ -162,7 +167,7 @@ class APIClient {
      * Actualizar configuración del agente
      */
     async updateAgentConfig(agentId, config) {
-        console.log('[APIClient] Updating agent config:', agentId, config);
+        log('Updating agent config:', agentId, config);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(500);
@@ -178,10 +183,10 @@ class APIClient {
                 body: JSON.stringify({ config })
             });
             const data = await response.json();
-            console.log('[APIClient] Agent updated:', data);
+            log('Agent updated:', data);
             return data;
         } catch (error) {
-            console.error('[APIClient] Failed to update agent:', error);
+            log.error('Failed to update agent:', error);
             this.emit('error', error.message);
             throw error;
         }
@@ -191,7 +196,7 @@ class APIClient {
      * Enviar query al orchestrator
      */
     async sendQuery(query, conversationId = null) {
-        console.log('[APIClient] Sending query:', query, 'conversationId:', conversationId);
+        log('Sending query:', query, 'conversationId:', conversationId);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(1500);
@@ -219,7 +224,7 @@ class APIClient {
                 agents_used: ['Code Analyzer', 'Data Analyst', 'Conversation Agent'],
                 mode: 'mock'
             };
-            console.log('[APIClient] Mock query result:', result);
+            log('Mock query result:', result);
             return result;
         }
         
@@ -238,7 +243,7 @@ class APIClient {
             });
             
             const data = await response.json();
-            console.log('[APIClient] Query response:', data);
+            log('Query response:', data);
             // Return full result with all agent responses and conversation_id
             return {
                 orchestrator_response: data.orchestrator_response,
@@ -250,7 +255,7 @@ class APIClient {
                 response: data.final_response || data.response // backward compatibility
             };
         } catch (error) {
-            console.error('[APIClient] Failed to send query:', error);
+            log.error('Failed to send query:', error);
             this.emit('error', error.message);
             throw error;
         }
@@ -283,7 +288,7 @@ class APIClient {
      * Obtener todas las conversaciones
      */
     async getConversations() {
-        console.log('[APIClient] Getting conversations from:', `${this.baseURL}/conversations`);
+        log('Getting conversations from:', `${this.baseURL}/conversations`);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(300);
@@ -319,17 +324,17 @@ class APIClient {
                     }
                 }
             };
-            console.log('[APIClient] Returning mock conversations:', mockConversations);
+            log('Returning mock conversations:', mockConversations);
             return mockConversations;
         }
         
         try {
             const response = await this.fetchWithRetry(`${this.baseURL}/conversations`);
             const data = await response.json();
-            console.log('[APIClient] Conversations retrieved:', data);
+            log('Conversations retrieved:', data);
             return data;
         } catch (error) {
-            console.error('[APIClient] Failed to get conversations:', error);
+            log.error('Failed to get conversations:', error);
             this.emit('error', error.message);
             throw error;
         }
@@ -339,7 +344,7 @@ class APIClient {
      * Obtener conversación específica por ID
      */
     async getConversation(conversationId) {
-        console.log('[APIClient] Getting conversation:', conversationId);
+        log('Getting conversation:', conversationId);
         
         if (CONFIG.MOCK_MODE) {
             await this.simulateDelay(200);
@@ -358,10 +363,10 @@ class APIClient {
         try {
             const response = await this.fetchWithRetry(`${this.baseURL}/conversations/${conversationId}`);
             const data = await response.json();
-            console.log('[APIClient] Conversation retrieved:', data);
+            log('Conversation retrieved:', data);
             return data;
         } catch (error) {
-            console.error('[APIClient] Failed to get conversation:', error);
+            log.error('Failed to get conversation:', error);
             this.emit('error', error.message);
             throw error;
         }
@@ -381,7 +386,7 @@ class APIClient {
             return response;
         } catch (error) {
             if (attempt < this.retryAttempts) {
-                console.log(`[APIClient] Retry attempt ${attempt}/${this.retryAttempts}`);
+                log(`Retry attempt ${attempt}/${this.retryAttempts}`);
                 const backoff = this.retryDelay * attempt;
                 await this.simulateDelay(backoff);
                 return this.fetchWithRetry(url, options, attempt + 1);
@@ -430,7 +435,7 @@ class APIClient {
             try {
                 callback(data);
             } catch (error) {
-                console.error(`[APIClient] Error in ${event} listener:`, error);
+                log.error(`Error in ${event} listener:`, error);
             }
         });
     }

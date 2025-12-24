@@ -1,4 +1,9 @@
 import CONFIG from '../config.js';
+import { createLogger } from '../utils/logs.js';
+
+// Per-file logging control (undefined = use global)
+const ShowLogs = undefined;
+const log = createLogger('[Query Panel]', ShowLogs);
 
 /**
  * Componente Query Panel - Panel interactivo para enviar queries
@@ -104,7 +109,7 @@ AFRAME.registerComponent('query-panel', {
         }
         
         canvas.addEventListener('click', (evt) => {
-            console.log('[Query Panel] Canvas click detected');
+            log('Canvas click detected');
             
             // Obtener cámara
             const camera = document.querySelector('[camera]');
@@ -137,12 +142,12 @@ AFRAME.registerComponent('query-panel', {
             const buttonMeshes = [];
             self.buttons.forEach((button, idx) => {
                 const obj3d = button.object3D;
-                console.log(`[Query Panel] Button ${idx} object3D:`, obj3d);
+                log(`Button ${idx} object3D:`, obj3d);
                 
                 // Obtener todos los meshes del botón recursivamente
                 obj3d.traverse((child) => {
                     if (child.isMesh) {
-                        console.log(`[Query Panel] Found mesh in button ${idx}:`, child);
+                        log(`Found mesh in button ${idx}:`, child);
                         buttonMeshes.push({
                             mesh: child,
                             buttonIndex: idx,
@@ -152,7 +157,7 @@ AFRAME.registerComponent('query-panel', {
                 });
             });
             
-            console.log('[Query Panel] Total meshes found:', buttonMeshes.length);
+            log('Total meshes found:', buttonMeshes.length);
             
             // Crear array de solo meshes para raycaster
             const meshesOnly = buttonMeshes.map(m => m.mesh);
@@ -160,22 +165,22 @@ AFRAME.registerComponent('query-panel', {
             // Detectar intersecciones
             const intersects = raycaster.intersectObjects(meshesOnly, false);
             
-            console.log('[Query Panel] Intersections found:', intersects.length);
+            log('Intersections found:', intersects.length);
             
             if (intersects.length > 0) {
-                console.log('[Query Panel] MOUSE CLICK on button detected!');
+                log('MOUSE CLICK on button detected!');
                 const clickedMesh = intersects[0].object;
                 
                 // Buscar cuál botón contiene este mesh
                 for (let i = 0; i < buttonMeshes.length; i++) {
                     if (buttonMeshes[i].mesh === clickedMesh) {
-                        console.log(`[Query Panel] Clicked on button ${i}`);
+                        log(`Clicked on button ${i}`);
                         buttonMeshes[i].button.emit('click', { intersection: intersects[0] });
                         break;
                     }
                 }
             } else {
-                console.log('[Query Panel] No intersection with buttons');
+                log('No intersection with buttons');
             }
         });
     },
@@ -190,7 +195,7 @@ AFRAME.registerComponent('query-panel', {
         }
         
         canvas.addEventListener('click', (evt) => {
-            console.log('[Query Panel] Canvas click detected');
+            log('Canvas click detected');
             
             // Obtener cámara y raycaster
             const camera = document.querySelector('[camera]');
@@ -233,7 +238,7 @@ AFRAME.registerComponent('query-panel', {
             const intersects = raycaster.intersectObjects(buttonObjects, true);
             
             if (intersects.length > 0) {
-                console.log('[Query Panel] MOUSE CLICK on button detected');
+                log('MOUSE CLICK on button detected');
                 // Disparar evento click en el objeto intersectado
                 const clickedMesh = intersects[0].object;
                 const parentButton = clickedMesh.parent;
@@ -242,7 +247,7 @@ AFRAME.registerComponent('query-panel', {
                 self.buttons.forEach((button, index) => {
                     const buttonMesh = button.getObject3D('mesh');
                     if (buttonMesh && (buttonMesh === clickedMesh || buttonMesh.parent === parentButton)) {
-                        console.log(`[Query Panel] Triggering click on button ${index}`);
+                        log(`Triggering click on button ${index}`);
                         button.emit('click', { intersection: null });
                     }
                 });
@@ -277,20 +282,20 @@ AFRAME.registerComponent('query-panel', {
         
         // Eventos visuales del botón
         button.addEventListener('mouseenter', () => {
-            console.log(`[Query Panel] Mouse enter button: ${label}`);
+            log(`Mouse enter button: ${label}`);
             bg.setAttribute('scale', '1.05 1.05 1');
             bg.setAttribute('opacity', 1);
         });
         
         button.addEventListener('mouseleave', () => {
-            console.log(`[Query Panel] Mouse leave button: ${label}`);
+            log(`Mouse leave button: ${label}`);
             bg.setAttribute('scale', '1 1 1');
             bg.setAttribute('opacity', 0.8);
         });
         
         // Click event - funciona con mouse y raycaster
         button.addEventListener('click', (evt) => {
-            console.log(`[Query Panel] CLICK DETECTED on button: ${label}`, {
+            log(`CLICK DETECTED on button: ${label}`, {
                 eventType: evt.type,
                 hasDetail: !!evt.detail,
                 hasIntersection: evt.detail && evt.detail.intersection ? true : false,
@@ -307,13 +312,13 @@ AFRAME.registerComponent('query-panel', {
                 loop: 1
             });
             
-            console.log(`[Query Panel] Executing action for: ${label}`);
+            log(`Executing action for: ${label}`);
             setTimeout(onClick, 100);
         });
         
         // Agregar evento adicional para detectar clicks en cualquier parte del botón
         button.addEventListener('touchend', () => {
-            console.log(`[Query Panel] Touch end button: ${label}`);
+            log(`Touch end button: ${label}`);
             onClick();
         });
         
@@ -341,7 +346,7 @@ AFRAME.registerComponent('query-panel', {
     },
     
     openHistory: function() {
-        console.log('[Query Panel] Opening conversation history');
+        log('Opening conversation history');
         
         // Buscar el componente de historial
         const historyPanel = document.querySelector('#conversation-history');
@@ -371,7 +376,7 @@ AFRAME.registerComponent('query-panel', {
     },
 
     startNewConversation: function() {
-        console.log('[Query Panel] Starting new conversation');
+        log('Starting new conversation');
         if (window.vrApp && window.vrApp.stateManager) {
             window.vrApp.stateManager.resetConversation();
             this.updateStatus('Nueva conversación iniciada', '#4CAF50');
@@ -382,7 +387,7 @@ AFRAME.registerComponent('query-panel', {
     },
 
     openAgentCreator: function() {
-        console.log('[Query Panel] Opening agent creator');
+        log('Opening agent creator');
         
         // Buscar el componente de creación de agentes
         const agentCreatorPanel = document.querySelector('#agent-creator');

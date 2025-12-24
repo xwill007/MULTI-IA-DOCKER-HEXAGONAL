@@ -1,4 +1,9 @@
 import APIClient from './api-client.js';
+import { createLogger } from '../utils/logs.js';
+
+// Control de logs para este servicio (undefined = usa global)
+const ShowLogs = undefined;
+const log = createLogger('[StateManager]', ShowLogs);
 
 /**
  * Gestor de estado global de la aplicación
@@ -22,7 +27,7 @@ class StateManager {
         // Setup API client listeners
         this.setupAPIListeners();
         
-        console.log('[StateManager] Initialized');
+        log('Initialized');
     }
     
     /**
@@ -55,7 +60,7 @@ class StateManager {
      * Cargar agentes
      */
     async loadAgents() {
-        console.log('[StateManager] Loading agents...');
+        log('Loading agents...');
         
         this.updateState({ loading: true, error: null });
         
@@ -74,10 +79,10 @@ class StateManager {
                 lastUpdate: new Date().toISOString()
             });
             
-            console.log('[StateManager] Agents loaded successfully');
+            log('Agents loaded successfully');
             return agents;
         } catch (error) {
-            console.error('[StateManager] Failed to load agents:', error);
+            log.error('Failed to load agents:', error);
             this.updateState({
                 error: error.message,
                 loading: false
@@ -90,7 +95,7 @@ class StateManager {
      * Crear nuevo agente
      */
     async createAgent(agentData) {
-        console.log('[StateManager] Creating agent:', agentData);
+        log('Creating agent:', agentData);
         
         this.updateState({ loading: true, error: null });
         
@@ -105,10 +110,10 @@ class StateManager {
                 loading: false
             });
             
-            console.log('[StateManager] Agent created successfully');
+            log('Agent created successfully');
             return newAgent;
         } catch (error) {
-            console.error('[StateManager] Failed to create agent:', error);
+            log.error('Failed to create agent:', error);
             this.updateState({
                 error: error.message,
                 loading: false
@@ -121,7 +126,7 @@ class StateManager {
      * Actualizar configuración del agente y refrescar estado
      */
     async updateAgentConfig(agentId, config) {
-        console.log('[StateManager] Updating agent config:', agentId, config);
+        log('Updating agent config:', agentId, config);
         this.updateState({ loading: true, error: null });
         try {
             const updated = await this.apiClient.updateAgentConfig(agentId, config);
@@ -135,7 +140,7 @@ class StateManager {
             this.updateState({ agents, loading: false });
             return updated;
         } catch (error) {
-            console.error('[StateManager] Failed to update agent config:', error);
+            log.error('Failed to update agent config:', error);
             this.updateState({ error: error.message, loading: false });
             throw error;
         }
@@ -145,7 +150,7 @@ class StateManager {
      * Enviar query
      */
     async sendQuery(query) {
-        console.log('[StateManager] Sending query:', query);
+        log('Sending query:', query);
         
         this.updateState({ loading: true, error: null });
         
@@ -159,15 +164,15 @@ class StateManager {
                     loading: false,
                     conversationId: result.conversation_id
                 });
-                console.log('[StateManager] Conversation ID:', result.conversation_id);
+                log('Conversation ID:', result.conversation_id);
             } else {
                 this.updateState({ loading: false });
             }
             
-            console.log('[StateManager] Query sent successfully');
+            log('Query sent successfully');
             return result;
         } catch (error) {
-            console.error('[StateManager] Failed to send query:', error);
+            log.error('Failed to send query:', error);
             this.updateState({
                 error: error.message,
                 loading: false
@@ -180,7 +185,7 @@ class StateManager {
      * Reiniciar conversación (fuerza nuevo conversation_id en próximo envío)
      */
     resetConversation() {
-        console.log('[StateManager] Resetting conversation context');
+        log('Resetting conversation context');
         this.updateState({ conversationId: null });
     }
     
@@ -192,7 +197,7 @@ class StateManager {
         
         if (agent) {
             this.updateState({ selectedAgent: agent });
-            console.log('[StateManager] Agent selected:', agent);
+            log('Agent selected:', agent);
         }
     }
     
@@ -234,7 +239,7 @@ class StateManager {
             try {
                 callback(this.state);
             } catch (error) {
-                console.error('[StateManager] Error in subscriber:', error);
+                log.error('Error in subscriber:', error);
             }
         });
     }

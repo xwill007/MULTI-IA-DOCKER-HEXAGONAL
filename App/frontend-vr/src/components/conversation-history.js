@@ -1,5 +1,8 @@
-import CONFIG from '../config.js';
+import CONFIG from '../config.js';import { createLogger } from '../utils/logs.js'
 
+// Control de logs para este componente (undefined = usa global)
+const ShowLogs = undefined;
+const log = createLogger('[Conversation History]', ShowLogs);
 /**
  * Componente Conversation History - Panel que muestra historial de conversaciones
  */
@@ -102,7 +105,7 @@ AFRAME.registerComponent('conversation-history', {
      * Cargar conversaciones desde la API
      */
     async loadConversations() {
-        console.log('[Conversation History] Loading conversations...');
+        log('Loading conversations...');
         this.updateStatus('Cargando conversaciones...');
         
         try {
@@ -124,7 +127,7 @@ AFRAME.registerComponent('conversation-history', {
             // Limitar a maxItems más recientes
             this.conversations = conversationsArray.slice(0, this.data.maxItems);
             
-            console.log('[Conversation History] Loaded', this.conversations.length, 'conversations');
+            log('Loaded conversations:', this.conversations.length);
             
             if (this.conversations.length === 0) {
                 this.updateStatus('No hay conversaciones guardadas');
@@ -134,7 +137,7 @@ AFRAME.registerComponent('conversation-history', {
             }
             
         } catch (error) {
-            console.error('[Conversation History] Failed to load conversations:', error);
+            log.error('Failed to load conversations:', error);
             this.updateStatus('Error al cargar conversaciones');
         }
     },
@@ -236,7 +239,7 @@ AFRAME.registerComponent('conversation-history', {
      * Seleccionar conversación para ver detalles
      */
     selectConversation(conversation) {
-        console.log('[Conversation History] Selected conversation:', conversation.conversation_id);
+        log('Selected conversation:', conversation.conversation_id);
         
         // Emitir evento para que otros componentes puedan reaccionar
         this.el.emit('conversation-selected', {
