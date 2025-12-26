@@ -81,12 +81,15 @@ async def test_hybrid_storage():
             await storage.save_message(conv_id, "assistant", f"Respuesta {i+1}")
         
         retrieved_conv = await storage.get_conversation(conv_id)
-        print(f"  - Total de mensajes después de agregar 40: {len(retrieved_conv.messages)}")
-        print(f"  - Máximo esperado en Redis: 20")
-        if len(retrieved_conv.messages) <= 20:
-            print(f"  ✓ Pruning funcionando correctamente")
+        if retrieved_conv:
+            print(f"  - Total de mensajes después de agregar 40: {len(retrieved_conv.messages)}")
+            print(f"  - Máximo esperado en Redis: 20")
+            if len(retrieved_conv.messages) <= 20:
+                print(f"  ✓ Pruning funcionando correctamente")
+            else:
+                print(f"  ✗ ALERTA: Se esperaban máximo 20 mensajes, se encontraron {len(retrieved_conv.messages)}")
         else:
-            print(f"  ✗ ALERTA: Se esperaban máximo 20 mensajes, se encontraron {len(retrieved_conv.messages)}")
+            print(f"  ✗ ERROR: No se pudo recuperar la conversación para verificar pruning")
         
         print()
         

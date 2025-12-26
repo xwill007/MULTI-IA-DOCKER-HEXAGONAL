@@ -8,15 +8,26 @@ import os
 import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Ensure orchestrator and external Infrastructure paths are on sys.path for imports
+# Load environment variables from .env file in project root
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT = Path(BASE_DIR).parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+    logging.info(f"Loaded environment variables from {ENV_FILE}")
+else:
+    logging.warning(f".env file not found at {ENV_FILE}, using system environment variables")
+
+# Ensure orchestrator and external Infrastructure paths are on sys.path for imports
 INFRA_PATH = os.getenv("INFRA_PATH", "/ext/Infrastructure")
 sys.path.insert(0, BASE_DIR)
 sys.path.insert(0, INFRA_PATH)

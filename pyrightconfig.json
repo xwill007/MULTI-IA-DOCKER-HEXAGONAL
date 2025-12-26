@@ -1,0 +1,11 @@
+{
+  "venvPath": "Api/orchestrator",
+  "venv": "venv",
+  "extraPaths": [
+    "Api/orchestrator",
+    "Infrastructure"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning"
+}
