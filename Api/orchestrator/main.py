@@ -2,19 +2,18 @@
 Orquestador Multi-IA - FastAPI Main Entry Point
 Coordina múltiples agentes IA para procesar queries
 """
+import asyncio
+import logging
+import os
+import sys
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List
+
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import httpx
-import asyncio
-from datetime import datetime
-import logging
-import os
-import uuid
-import sys
-import json
-from pathlib import Path
 
 # Ensure orchestrator and external Infrastructure paths are on sys.path for imports
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -24,33 +23,37 @@ sys.path.insert(0, INFRA_PATH)
 
 from conversation_storage import (  # type: ignore # Docker mount at /ext/Infrastructure
     ConversationStoragePort,
+    HybridConversationStorage,
     InMemoryConversationStorage,
-    RedisConversationStorage,
     PostgreSQLConversationStorage,
-    HybridConversationStorage
+    RedisConversationStorage,
 )
+
+from modules.agents.schemas import Agent
+from modules.agents.service import _default_agent_config, agents_db, load_agents
+from modules.agents.router import router as agents_router
+from modules.orchestrator_config.service import load_orchestrator_config, orchestrator_config
+from modules.orchestrator_config.router import router as orchestrator_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Paths para persistencia
-DATA_DIR = Path("/data/agents") if os.path.exists("/data/agents") else Path("data/agents")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-AGENTS_FILE = DATA_DIR / "registry.json"
-ORCHESTRATOR_CONFIG_FILE = DATA_DIR / "orchestrator_config.json"
+# Ollama endpoint
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 
 def get_rule_based_response(query: str) -> str:
     """Tiny rule-based fallback when LLM is unavailable."""
     q_lower = query.lower()
     if "chiste" in q_lower or "joke" in q_lower:
-        return "Claro, aquí va uno rápido: ¿Por qué la computadora fue al médico? Porque tenía un virus."  # short, safe joke
+        return "Claro, aquí va uno rápido: ¿Por qué la computadora fue al médico? Porque tenía un virus."
     if "hola" in q_lower or "saludo" in q_lower:
         return "¡Hola! Soy el orquestador. Estoy listo para ayudarte con tus consultas."
     if "resumen" in q_lower:
         return "Puedo resumir el contenido solicitado. En modo degradado, necesito un texto o tema concreto para resumirlo correctamente."
     return "Estoy en modo offline. Puedo darte una respuesta breve basada en reglas: el sistema coordina agentes para darte análisis, pero ahora uso respuestas locales."
+
 
 app = FastAPI(
     title="Multi-IA Orchestrator",
@@ -63,12 +66,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://localhost:3001",  # Fallback when 3000 is in use
-        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3001",
+        "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://127.0.0.1:5173",
-        "http://localhost:8080"  # Otros puertos comunes
+        "http://localhost:8080"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -76,20 +79,11 @@ app.add_middleware(
 )
 
 # Models
-class Agent(BaseModel):
-    id: str
-    name: str
-    model: str
-    status: str = "idle"
-    capabilities: List[str] = []
-    endpoint: Optional[str] = None
-    # Configuración editable por agente (prompt y opciones del modelo)
-    config: Dict[str, Any] = {}
-
 class QueryRequest(BaseModel):
     query: str
     use_agents: bool = True
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
+
 
 class QueryResponse(BaseModel):
     query: str
@@ -101,181 +95,47 @@ class QueryResponse(BaseModel):
     processing_time: float
     conversation_id: str
 
-class CreateAgentRequest(BaseModel):
-    name: str
-    model: str
-    capabilities: List[str] = []
-
-# Ollama endpoint - usar variable de entorno o default a contenedor Docker
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-
-# Configuración del orquestador (editable)
-orchestrator_config: Dict[str, Any] = {
-    "model": "llama3.2",
-    "prompt": """Eres un orquestador de agentes IA. Tu función es:
-1. Analizar y comprender queries complejas
-2. Proporcionar respuestas iniciales basadas en tu conocimiento
-3. Coordinar agentes especializados cuando sea necesario
-4. Sintetizar información de múltiples fuentes
-5. Mantener contexto de conversación y evitar repetir respuestas
-
-Responde de manera clara, concisa y profesional. Si el usuario pide un chiste, asegúrate de contar uno diferente cada vez.""",
-    "options": {
-        "temperature": 0.7,
-        "num_predict": 200
-    }
-}
-
-def load_orchestrator_config():
-    """Cargar configuración del orquestador desde archivo JSON"""
-    global orchestrator_config
-    try:
-        if ORCHESTRATOR_CONFIG_FILE.exists():
-            with open(ORCHESTRATOR_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                loaded = json.load(f)
-                orchestrator_config.update(loaded)
-                logger.info(f"Orchestrator config loaded from {ORCHESTRATOR_CONFIG_FILE}")
-        else:
-            # Guardar config por defecto
-            save_orchestrator_config()
-            logger.info("Created default orchestrator config file")
-    except Exception as e:
-        logger.error(f"Failed to load orchestrator config: {e}")
-
-def save_orchestrator_config():
-    """Guardar configuración del orquestador a archivo JSON"""
-    try:
-        with open(ORCHESTRATOR_CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(orchestrator_config, f, indent=2, ensure_ascii=False)
-        logger.info(f"Orchestrator config saved to {ORCHESTRATOR_CONFIG_FILE}")
-    except Exception as e:
-        logger.error(f"Failed to save orchestrator config: {e}")
-
-# In-memory storage (temporal)
-def _default_agent_config(model: str) -> Dict[str, Any]:
-    system_prompts = {
-        "codellama": "Eres un experto en Trading de Criptomonedas. Proporciona predicciones de compra y venta basandote en calculos matematicos estadisticos, solicita lo que te falte para una prediccion mas acertada.",
-        #"Eres un experto en análisis de código. Proporciona respuestas técnicas y precisas sobre programación, arquitectura y calidad de código.",
-        "mistral": "Eres un analista de datos Historicos especializado. Enfócate en análisis de tendencias repetitivas en los valores de criptomonedas que permita predecir valores futuros o desiciones de compra y venta.",
-        #"Eres un analista de datos especializado. Enfócate en análisis, estadísticas y visualización de información.",
-        "llama3.2": "Eres un investigador de noticias para identificar cambios de precios en Criptomonedas. Proporciona sugerencias de compra y venta basandote en hechos actuales."
-        #"Eres un agente conversacional general. Proporciona respuestas útiles y contextualmente relevantes."
-    }
-    
-    
-    return {
-        "prompt": system_prompts.get(model, "Eres un asistente especializado."),
-        "options": {
-            "temperature": 0.5 if model == "codellama" else 0.7,
-            "num_predict": 150
-        }
-    }
-
-agents_db: Dict[str, Agent] = {
-    "agent-001": Agent(
-        id="agent-001",
-        name="Code Analyzer",
-        model="codellama",
-        status="active",
-        capabilities=["code_analysis", "quality_check", "refactoring"],
-        endpoint=OLLAMA_BASE_URL,
-        config=_default_agent_config("codellama")
-    ),
-    "agent-002": Agent(
-        id="agent-002",
-        name="Data Analyst",
-        model="mistral",
-        status="active",
-        capabilities=["data_analysis", "statistics", "visualization"],
-        endpoint=OLLAMA_BASE_URL,
-        config=_default_agent_config("mistral")
-    ),
-    "agent-003": Agent(
-        id="agent-003",
-        name="Conversation Agent",
-        model="llama3.2",
-        status="active",
-        capabilities=["conversation", "general_knowledge", "coordination"],
-        endpoint=OLLAMA_BASE_URL,
-        config=_default_agent_config("llama3.2")
-    )
-}
-
-def load_agents():
-    """Cargar agentes desde archivo JSON"""
-    global agents_db
-    try:
-        if AGENTS_FILE.exists():
-            with open(AGENTS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # Convertir dict a Agent objects
-                agents_db = {
-                    agent_id: Agent(**agent_data)
-                    for agent_id, agent_data in data.items()
-                }
-                logger.info(f"Loaded {len(agents_db)} agents from {AGENTS_FILE}")
-        else:
-            # Guardar agentes por defecto
-            save_agents()
-            logger.info("Created default agents file")
-    except Exception as e:
-        logger.error(f"Failed to load agents: {e}")
-
-def save_agents():
-    """Guardar agentes a archivo JSON"""
-    try:
-        # Convertir Agent objects a dict
-        data = {
-            agent_id: agent.dict()
-            for agent_id, agent in agents_db.items()
-        }
-        with open(AGENTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(agents_db)} agents to {AGENTS_FILE}")
-    except Exception as e:
-        logger.error(f"Failed to save agents: {e}")
-
-# Conversation history storage (in-memory)
-# Format: {conversation_id: [{"role": "user/assistant", "content": "...", "timestamp": "..."}]}
-# conversations_db: Dict[str, List[Dict[str, str]]] = {}  # Replaced by storage layer
 
 # Initialize storage based on environment
 def get_storage() -> ConversationStoragePort:
-    """Factory para crear storage según configuración"""
     storage_type = os.getenv("STORAGE_TYPE", "memory").lower()
-    
-    logger.info(f"Initializing storage type: {storage_type}")
-    
+    logger.info("Initializing storage type: %s", storage_type)
+
     if storage_type == "redis":
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         redis_ttl = int(os.getenv("REDIS_TTL_SECONDS", "3600"))
         return RedisConversationStorage(redis_url, redis_ttl)
-    
+
     elif storage_type == "postgresql":
         db_url = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres:5432/ias_db")
         return PostgreSQLConversationStorage(db_url)
-    
+
     elif storage_type == "hybrid":
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         db_url = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres:5432/ias_db")
         redis_ttl = int(os.getenv("REDIS_TTL_SECONDS", "3600"))
         redis_max_messages = int(os.getenv("REDIS_MAX_MESSAGES", "20"))
         return HybridConversationStorage(redis_url, db_url, redis_ttl, redis_max_messages)
-    
+
     else:  # memory (default)
         return InMemoryConversationStorage()
+
 
 # Global storage instance
 storage: ConversationStoragePort = get_storage()
 
-# Cargar configuraciones al inicio
+# Load configs
 load_orchestrator_config()
 load_agents()
 
+# Register modular routers
+app.include_router(agents_router)
+app.include_router(orchestrator_router)
+
+
 # Health check
 @app.get("/health")
-async def health_check():
-    """Health check endpoint"""
+async def health_check() -> Dict[str, Any]:
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -283,161 +143,39 @@ async def health_check():
         "version": "1.0.0"
     }
 
+
 # Test endpoint
 @app.get("/test")
-async def test_endpoint():
-    """Simple test endpoint"""
-    return {
-        "message": "Backend is working",
-        "cors": "enabled"
-    }
+async def test_endpoint() -> Dict[str, str]:
+    return {"message": "Backend is working", "cors": "enabled"}
 
-# Get all agents
-@app.get("/agents", response_model=List[Agent])
-async def get_agents():
-    """Get all registered agents"""
-    logger.info(f"Getting {len(agents_db)} agents")
-    return list(agents_db.values())
 
 # Get all conversations (for debugging)
 @app.get("/conversations")
-async def get_conversations():
-    """Get all stored conversations (debugging endpoint)"""
+async def get_conversations() -> Dict[str, Any]:
     conversations = await storage.get_all_conversations()
-    logger.info(f"Retrieved {len(conversations)} conversations")
+    logger.info("Retrieved %s conversations", len(conversations))
     return {
         "total_conversations": len(conversations),
-        "conversations": {
-            conv_id: conv.to_dict()
-            for conv_id, conv in conversations.items()
-        }
+        "conversations": {conv_id: conv.to_dict() for conv_id, conv in conversations.items()}
     }
+
 
 # Get specific conversation
 @app.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
-    """Get a specific conversation by ID"""
+async def get_conversation(conversation_id: str) -> Dict[str, Any]:
     conversation = await storage.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
     return conversation.to_dict()
 
-# Create new agent
-@app.post("/agents", response_model=Agent)
-async def create_agent(request: CreateAgentRequest):
-    """Create a new agent"""
-    agent_id = f"agent-{len(agents_db) + 1:03d}"
-    
-    new_agent = Agent(
-        id=agent_id,
-        name=request.name,
-        model=request.model,
-        status="active",
-        capabilities=request.capabilities,
-        endpoint=OLLAMA_BASE_URL,
-        config=_default_agent_config(request.model)
-    )
-    
-    agents_db[agent_id] = new_agent
-    logger.info(f"Created agent: {agent_id} - {request.name}")
-    
-    # Persistir cambios
-    save_agents()
-    
-    return new_agent
-
-# Get single agent
-@app.get("/agents/{agent_id}", response_model=Agent)
-async def get_agent(agent_id: str):
-    agent = agents_db.get(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return agent
-
-# Update agent configuration or metadata
-@app.patch("/agents/{agent_id}", response_model=Agent)
-async def update_agent(agent_id: str, payload: Dict[str, Any]):
-    agent = agents_db.get(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    
-    # Update editable fields
-    if "name" in payload:
-        agent.name = payload["name"]
-    if "status" in payload:
-        agent.status = payload["status"]
-    if "capabilities" in payload and isinstance(payload["capabilities"], list):
-        agent.capabilities = payload["capabilities"]
-    if "config" in payload and isinstance(payload["config"], dict):
-        # Merge config shallowly
-        new_conf = {**agent.config, **payload["config"]}
-        agent.config = new_conf
-    
-    agents_db[agent_id] = agent
-    logger.info(f"Updated agent {agent_id}")
-    
-    # Persistir cambios
-    save_agents()
-    
-    return agent
-
-# Delete agent (soft delete - just change status)
-@app.delete("/agents/{agent_id}")
-async def delete_agent(agent_id: str):
-    """Soft delete: toggle agent status between active and inactive"""
-    if agent_id not in agents_db:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    
-    agent = agents_db[agent_id]
-    # Toggle status
-    new_status = "inactive" if agent.status == "active" else "active"
-    agent.status = new_status
-    agents_db[agent_id] = agent
-    
-    logger.info(f"Agent {agent_id} status changed to {new_status}")
-    
-    # Persistir cambios
-    save_agents()
-    
-    return {
-        "message": f"Agent {agent_id} status changed to {new_status}",
-        "agent_id": agent_id,
-        "new_status": new_status
-    }
-
-# Get orchestrator configuration
-@app.get("/orchestrator/config")
-async def get_orchestrator_config():
-    """Get current orchestrator configuration"""
-    return orchestrator_config
-
-# Update orchestrator configuration
-@app.patch("/orchestrator/config")
-async def update_orchestrator_config(payload: Dict[str, Any]):
-    """Update orchestrator configuration (prompt, model, options)"""
-    global orchestrator_config
-    
-    if "model" in payload:
-        orchestrator_config["model"] = payload["model"]
-    if "prompt" in payload:
-        orchestrator_config["prompt"] = payload["prompt"]
-    if "options" in payload and isinstance(payload["options"], dict):
-        orchestrator_config["options"] = {**orchestrator_config["options"], **payload["options"]}
-    
-    logger.info(f"Orchestrator config updated")
-    
-    # Persistir cambios
-    save_orchestrator_config()
-    
-    return orchestrator_config
 
 # Query endpoint - MAIN LOGIC
 @app.post("/query", response_model=QueryResponse)
-async def process_query(request: QueryRequest):
+async def process_query(request: QueryRequest) -> QueryResponse:
     """
     Procesa una query usando el orquestador y sus agentes
-    
+
     Flujo:
     1. Orquestador genera su propia respuesta
     2. Si use_agents=True, consulta a agentes especializados
@@ -445,56 +183,53 @@ async def process_query(request: QueryRequest):
     4. Retorna respuesta final con razonamiento
     """
     start_time = asyncio.get_event_loop().time()
-    
-    # Generate or reuse conversation_id
+
     conversation_id = request.conversation_id or str(uuid.uuid4())
-    
-    # Get or create conversation
+
     conversation = await storage.get_conversation(conversation_id)
     if not conversation:
         conversation = await storage.create_conversation(conversation_id)
-        logger.info(f"New conversation started: {conversation_id}")
+        logger.info("New conversation started: %s", conversation_id)
     else:
-        logger.info(f"Continuing conversation: {conversation_id} (history: {len(conversation.messages)} messages)")
-    
-    # Convert to dict format for compatibility with existing code
+        logger.info("Continuing conversation: %s (history: %s messages)", conversation_id, len(conversation.messages))
+
     conversation_history = [
         {"role": msg.role, "content": msg.content, "timestamp": msg.timestamp}
         for msg in conversation.messages
     ]
-    
-    logger.info(f"Processing query: {request.query}")
-    
+
+    logger.info("Processing query: %s", request.query)
+
     try:
-        # 1. Respuesta del orquestador (razonamiento propio) with conversation context
+        # 1. Respuesta del orquestador
         logger.info("Step 1: Getting orchestrator response with conversation context...")
         orchestrator_response = await get_orchestrator_response(request.query, conversation_history)
-        logger.info(f"Orchestrator response received: {orchestrator_response[:100] if orchestrator_response else 'EMPTY'}...")
-        
+        logger.info("Orchestrator response received: %s...", orchestrator_response[:100] if orchestrator_response else "EMPTY")
+
         # 2. Consultar agentes si está habilitado
-        agents_responses = []
+        agents_responses: List[Dict[str, Any]] = []
         if request.use_agents and len(agents_db) > 0:
             logger.info("Step 2: Querying agents...")
             agents_responses = await query_agents(request.query)
-            logger.info(f"Agents responses: {len(agents_responses)} responses received")
+            logger.info("Agents responses: %s responses received", len(agents_responses))
         else:
             logger.info("Step 2: Skipping agents (use_agents=False or no agents)")
-        
-        # 3. Sintetizar respuestas con IA (el orquestador valida y analiza)
+
+        # 3. Sintetizar respuestas con IA
         logger.info("Step 3: AI-powered synthesis - orchestrator validating responses...")
         final_response, reasoning = await synthesize_responses_with_ai(
             request.query,
             orchestrator_response,
             agents_responses
         )
-        logger.info(f"Synthesis complete. Final response length: {len(final_response)}")
-        
-        # Store conversation messages using storage layer
+        logger.info("Synthesis complete. Final response length: %s", len(final_response))
+
+        # Store conversation messages
         await storage.save_message(conversation_id, "user", request.query)
         await storage.save_message(conversation_id, "assistant", final_response)
-        
+
         processing_time = asyncio.get_event_loop().time() - start_time
-        
+
         response_obj = QueryResponse(
             query=request.query,
             orchestrator_response=orchestrator_response,
@@ -505,27 +240,23 @@ async def process_query(request: QueryRequest):
             processing_time=round(processing_time, 3),
             conversation_id=conversation_id
         )
-        
-        logger.info(f"Query processed successfully in {processing_time:.3f}s (conversation: {conversation_id})")
+
+        logger.info("Query processed successfully in %.3fs (conversation: %s)", processing_time, conversation_id)
         return response_obj
-        
-    except Exception as e:
-        logger.error(f"Error processing query: {type(e).__name__}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception as exc:
+        logger.error("Error processing query: %s: %s", type(exc).__name__, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 async def get_orchestrator_response(query: str, conversation_history: list = []) -> str:
-    """
-    Genera respuesta del orquestador usando su propio modelo con contexto de conversación
-    Usa la configuración editable global orchestrator_config
-    """
+    """Genera respuesta del orquestador usando su propio modelo con contexto de conversación."""
     logger.info("Getting orchestrator response...")
-    
-    # Usar prompt de la configuración editable
+
     system_prompt = orchestrator_config.get("prompt", "Eres un asistente útil.")
     model = orchestrator_config.get("model", "llama3.2")
     options = orchestrator_config.get("options", {"temperature": 0.7, "num_predict": 200})
-    
-    # Build conversation context
+
     context = system_prompt
     if conversation_history and len(conversation_history) > 0:
         context += "\n\nHistorial de conversación:"
@@ -533,9 +264,8 @@ async def get_orchestrator_response(query: str, conversation_history: list = [])
             role = "Usuario" if msg.get("role") == "user" else "Asistente"
             content = msg.get("content", "")
             context += f"\n{role}: {content}"
-    
+
     try:
-        # Timeout más largo para la primera carga del modelo
         timeout = httpx.Timeout(120.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -547,38 +277,35 @@ async def get_orchestrator_response(query: str, conversation_history: list = [])
                     "options": options
                 }
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 return data.get("response", "").strip()
             else:
-                logger.warning(f"Ollama returned status {response.status_code}: {response.text}")
+                logger.warning("Ollama returned status %s: %s", response.status_code, response.text)
                 return f"[Orquestador] Basándome en mi análisis de '{query}', puedo coordinar agentes especializados para una respuesta completa."
-                
-    except Exception as e:
-        logger.error(f"Error calling Ollama at {OLLAMA_BASE_URL}: {type(e).__name__}: {e}")
+
+    except Exception as exc:
+        logger.error("Error calling Ollama at %s: %s: %s", OLLAMA_BASE_URL, type(exc).__name__, exc)
         return f"[Orquestador] Análisis inicial de '{query}' - consultando agentes especializados..."
 
+
 async def query_agents(query: str) -> List[Dict[str, Any]]:
-    """
-    Consulta a todos los agentes activos en paralelo
-    Solo incluye agentes con status="active"
-    """
-    # Filtrar solo agentes activos
+    """Consulta a todos los agentes activos en paralelo."""
     active_agents = [agent for agent in agents_db.values() if agent.status == "active"]
-    
-    logger.info(f"Querying {len(active_agents)} active agents (total agents in db: {len(agents_db)})...")
-    
+
+    logger.info("Querying %s active agents (total agents in db: %s)...", len(active_agents), len(agents_db))
+
     tasks = []
     for agent in active_agents:
         tasks.append(query_single_agent(agent, query))
-    
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     agents_responses = []
     for agent, result in zip(active_agents, results):
         if isinstance(result, Exception):
-            logger.error(f"Agent {agent.name} failed: {result}")
+            logger.error("Agent %s failed: %s", agent.name, result)
             agents_responses.append({
                 "agent_id": agent.id,
                 "agent_name": agent.name,
@@ -588,23 +315,20 @@ async def query_agents(query: str) -> List[Dict[str, Any]]:
             })
         else:
             agents_responses.append(result)
-    
+
     return agents_responses
 
+
 async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
-    """
-    Consulta a un agente individual usando Ollama
-    """
+    """Consulta a un agente individual usando Ollama."""
     start_time = asyncio.get_event_loop().time()
-    logger.info(f"Querying agent: {agent.name} ({agent.model})")
-    
-    # Prompt y opciones provenientes de la configuración editable
+    logger.info("Querying agent: %s (%s)", agent.name, agent.model)
+
     conf = agent.config or {}
     system_prompt = conf.get("prompt") or _default_agent_config(agent.model)["prompt"]
     options = conf.get("options") or _default_agent_config(agent.model)["options"]
-    
+
     try:
-        # Timeout más largo para permitir carga inicial del modelo
         timeout = httpx.Timeout(120.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -616,16 +340,16 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
                     "options": options
                 }
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 agent_response = data.get("response", "").strip()
             else:
-                logger.warning(f"Agent {agent.name} returned status {response.status_code}: {response.text[:200]}")
+                logger.warning("Agent %s returned status %s: %s", agent.name, response.status_code, response.text[:200])
                 agent_response = f"[{agent.name}] No disponible (HTTP {response.status_code})"
-            
+
             response_time = asyncio.get_event_loop().time() - start_time
-            
+
             return {
                 "agent_id": agent.id,
                 "agent_name": agent.name,
@@ -635,69 +359,56 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
                 "capabilities": agent.capabilities,
                 "response_time": round(response_time, 2)
             }
-            
-    except Exception as e:
+
+    except Exception as exc:
         response_time = asyncio.get_event_loop().time() - start_time
-        logger.error(f"Error querying {agent.name} at {agent.endpoint}: {type(e).__name__}: {e}")
-        
-        # Provide intelligent fallback responses instead of error messages
+        logger.error("Error querying %s at %s: %s: %s", agent.name, agent.endpoint, type(exc).__name__, exc)
+
         fallback_responses = {
             "codellama": "El análisis de código indica que se requiere revisión de estructura, patrones de diseño y mejores prácticas. Se recomienda implementar linting automático y pruebas unitarias.",
             "mistral": "Basado en los datos disponibles, se sugiere realizar análisis de tendencias, validación de integridad de datos y documentación de hallazgos clave.",
             "llama3.2": "Para abordar esta consulta de manera integral, consideramos múltiples perspectivas: el enfoque técnico, el contexto del usuario y las mejores prácticas aplicables."
         }
-        
-        # If we have a rule-based response for the query, prefer it
+
         rule_based = get_rule_based_response(query)
-        # If we have a rule-based (context-aware) message, prefer it; otherwise use model-specific fallback
         fallback_response = rule_based or fallback_responses.get(agent.model, rule_based)
-        
+
         return {
             "agent_id": agent.id,
             "agent_name": agent.name,
             "model": agent.model,
             "response": fallback_response,
-            "status": "degraded",  # Mark as degraded, not error
+            "status": "degraded",
             "capabilities": agent.capabilities,
             "response_time": round(response_time, 2)
         }
+
 
 async def synthesize_responses_with_ai(
     query: str,
     orchestrator_response: str,
     agents_responses: List[Dict[str, Any]]
 ) -> tuple[str, str]:
-    """
-    El orquestador analiza y valida las respuestas de los agentes usando IA
-    para generar una respuesta final inteligente
-    
-    Returns:
-        (final_response, reasoning)
-    """
+    """El orquestador analiza y valida las respuestas de los agentes usando IA."""
     logger.info("AI-powered synthesis starting...")
-    logger.info(f"Agents responses count: {len(agents_responses) if agents_responses else 0}")
-    
-    # Si no hay respuestas de agentes, usar solo orquestador
+    logger.info("Agents responses count: %s", len(agents_responses) if agents_responses else 0)
+
     if not agents_responses:
         logger.info("No agent responses, using only orchestrator")
         return orchestrator_response, "Solo respuesta del orquestador (agentes no disponibles)"
-    
-    # Filtrar respuestas exitosas (incluyendo degradadas)
+
     successful_responses = [
-        r for r in agents_responses 
-        if (r.get("status") in ["success", "degraded"] and 
-            r.get("response") and 
+        r for r in agents_responses
+        if (r.get("status") in ["success", "degraded"] and
+            r.get("response") and
             not r["response"].startswith("[Error"))
     ]
-    
-    logger.info(f"Successful responses: {len(successful_responses)} (including {sum(1 for r in successful_responses if r.get('status') == 'degraded')} degraded)")
-    
-    # Si no hay respuestas exitosas de agentes
+
+    logger.info("Successful responses: %s (including %s degraded)", len(successful_responses), sum(1 for r in successful_responses if r.get("status") == "degraded"))
+
     if not successful_responses:
         logger.warning("No successful agent responses")
-        
-        # Even without agent responses, create a more structured synthesis
-        # by analyzing the query further with the orchestrator
+
         analysis_prompt = f"""Query del usuario: {query}
 
 Mi análisis inicial como orquestador: {orchestrator_response}
@@ -709,7 +420,7 @@ Analiza esta respuesta más profundamente y proporciona:
 4. Una respuesta final mejorada y más completa
 
 Respuesta mejorada:"""
-        
+
         try:
             timeout = httpx.Timeout(120.0, connect=10.0)
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -719,39 +430,33 @@ Respuesta mejorada:"""
                         "model": "llama3.2",
                         "prompt": analysis_prompt,
                         "stream": False,
-                        "options": {
-                            "temperature": 0.5,
-                            "num_predict": 300
-                        }
+                        "options": {"temperature": 0.5, "num_predict": 300}
                     }
                 )
                 if response.status_code == 200:
                     result = response.json()
                     improved_response = result.get("response", orchestrator_response)
-                    logger.info(f"Orchestrator improved response: {improved_response[:100]}...")
+                    logger.info("Orchestrator improved response: %s...", improved_response[:100])
                     return improved_response, "Respuesta mejorada por el orquestador (análisis profundo sin agentes)"
-        except Exception as e:
-            logger.warning(f"Could not improve response with AI: {e}")
-        
-        # Fallback rule-based response to keep the answer on-topic
+        except Exception as exc:
+            logger.warning("Could not improve response with AI: %s", exc)
+
         rule_based = get_rule_based_response(query)
         return rule_based, "Respuesta generada en modo degradado (sin agentes ni LLM)"
-    
-    # Construir el contexto para que el orquestador analice
+
     analysis_context = f"""Query del usuario: {query}
 
 Mi análisis inicial: {orchestrator_response}
 
 Respuestas de agentes especializados:
 """
-    
+
     for i, agent_resp in enumerate(successful_responses, 1):
         agent_name = agent_resp.get('agent_name', 'Unknown')
         agent_model = agent_resp.get('model', 'unknown')
         agent_response = agent_resp.get('response', '')
         analysis_context += f"\n{i}. {agent_name} ({agent_model}):\n{agent_response}\n"
-    
-    # Prompt para el orquestador que analiza y valida
+
     synthesis_prompt = f"""{analysis_context}
 
 Como orquestador, tu tarea es:
@@ -763,9 +468,8 @@ Como orquestador, tu tarea es:
 Proporciona una respuesta final coherente, validada y de alta calidad que responda directamente a: "{query}"
 
 Respuesta final validada:"""
-    
+
     try:
-        # El orquestador analiza las respuestas con IA
         timeout = httpx.Timeout(120.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -774,48 +478,44 @@ Respuesta final validada:"""
                     "model": "llama3.2",
                     "prompt": synthesis_prompt,
                     "stream": False,
-                    "options": {
-                        "temperature": 0.6,  # Más controlado para síntesis
-                        "num_predict": 300
-                    }
+                    "options": {"temperature": 0.6, "num_predict": 300}
                 }
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 final_response = data.get("response", "").strip()
-                
-                # Reasoning detallado
+
                 reasoning = f"""Proceso de validación del orquestador:
 1. Query recibida: {query}
 2. Agentes consultados: {len(successful_responses)}
 3. Respuestas analizadas y validadas por el orquestador
 4. Respuesta final sintetizada usando inteligencia artificial"""
-                
-                logger.info(f"AI synthesis complete. Final response length: {len(final_response)}")
+
+                logger.info("AI synthesis complete. Final response length: %s", len(final_response))
                 return final_response, reasoning
             else:
-                logger.warning(f"Synthesis AI call failed: {response.status_code}")
-                # Fallback a concatenación simple
+                logger.warning("Synthesis AI call failed: %s", response.status_code)
                 return _fallback_synthesis(query, orchestrator_response, successful_responses)
-                
-    except Exception as e:
-        logger.error(f"Error in AI synthesis: {e}")
-        # Fallback a concatenación simple
+
+    except Exception as exc:
+        logger.error("Error in AI synthesis: %s", exc)
         return _fallback_synthesis(query, orchestrator_response, successful_responses)
 
+
 def _fallback_synthesis(query: str, orchestrator_response: str, successful_responses: List[Dict]) -> tuple[str, str]:
-    """Fallback si la síntesis IA falla"""
+    """Fallback si la síntesis IA falla."""
     final_response = f"**Respuesta del Orquestador:**\n{orchestrator_response}\n\n"
     final_response += "**Respuestas de Agentes:**\n"
-    
+
     for agent_resp in successful_responses:
         agent_name = agent_resp.get('agent_name', 'Unknown Agent')
         agent_response = agent_resp.get('response', '[Sin respuesta]')
         final_response += f"\n• **{agent_name}**: {agent_response}"
-    
+
     reasoning = "Síntesis básica (modo fallback)"
     return final_response, reasoning
+
 
 if __name__ == "__main__":
     import uvicorn
