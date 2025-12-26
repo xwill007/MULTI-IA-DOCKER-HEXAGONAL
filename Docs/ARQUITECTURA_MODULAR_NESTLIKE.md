@@ -91,6 +91,10 @@ Api/orchestrator/
 ### Testing
 
 ```bash
+# Configurar variables de entorno (primera vez)
+cp .env.example .env  # En la raíz del proyecto
+# Editar .env si necesitas ajustes
+
 # Backend dev (con auto-reload)
 ./Scripts/start-orchestrator-dev.ps1
 

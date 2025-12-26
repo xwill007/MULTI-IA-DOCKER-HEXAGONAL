@@ -21,17 +21,19 @@
 ### Estructura Actual Limpia
 
 ```
-Api/orchestrator/
-├── main.py                    # Bootstrap minimalista
-├── modules/                   # Módulos Nest-like
-│   ├── agents/               # CRUD de agentes
-│   └── orchestrator_config/  # Config del orquestador
-├── data/                      # Persistencia JSON
-├── tests/                     # Tests
-├── venv/                      # Entorno virtual Python
-├── Dockerfile                 # Imagen Docker
-├── requirements.txt           # Dependencias
-└── .env.example              # Variables de entorno
+Raíz del proyecto/
+├── .env.example              # Variables de entorno (template)
+├── docker-compose.yml        # Stack completo
+└── Api/orchestrator/
+    ├── main.py              # Bootstrap minimalista
+    ├── modules/             # Módulos Nest-like
+    │   ├── agents/         # CRUD de agentes
+    │   └── orchestrator_config/  # Config del orquestador
+    ├── data/                # Persistencia JSON
+    ├── tests/               # Tests
+    ├── venv/                # Entorno virtual Python
+    ├── Dockerfile           # Imagen Docker
+    └── requirements.txt     # Dependencias
 ```
 
 ### Razón de la Limpieza

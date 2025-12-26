@@ -11,10 +11,13 @@ Orquestador de IAs en arquitectura hexagonal con Docker.
 - `.gitignore` y `.dockerignore` agregados para evitar subir modelos/caches.
 
 ## Uso rápido
-1. Levantar servicios:
+1. Configurar variables de entorno:
+	- Copiar `.env.example` a `.env` en la raíz del proyecto
+	- Ajustar variables si es necesario (por defecto usa `STORAGE_TYPE=hybrid`)
+2. Levantar servicios:
 	- `docker compose up -d`
-2. Frontend en `http://localhost:3000` y API en `http://localhost:8000`.
-3. Enviar consulta desde el panel VR y observar:
+3. Frontend en `http://localhost:3000` y API en `http://localhost:8000`.
+4. Enviar consulta desde el panel VR y observar:
 	- Contador en el Orchestrator.
 	- Respuesta general arriba del Orchestrator.
 	- Respuestas por agente bajo cada esfera con su tiempo.
