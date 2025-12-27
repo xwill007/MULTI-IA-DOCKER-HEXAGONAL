@@ -9,7 +9,7 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -45,6 +45,8 @@ from modules.agents.service import _default_agent_config, agents_db, load_agents
 from modules.agents.router import router as agents_router
 from modules.orchestrator_config.service import load_orchestrator_config, orchestrator_config
 from modules.orchestrator_config.router import router as orchestrator_router
+from modules.web_connector.router import router as web_router
+from modules.web_connector.service import fetch_url_text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -142,6 +144,7 @@ load_agents()
 # Register modular routers
 app.include_router(agents_router)
 app.include_router(orchestrator_router)
+app.include_router(web_router)
 
 
 # Health check
@@ -212,9 +215,32 @@ async def process_query(request: QueryRequest) -> QueryResponse:
     logger.info("Processing query: %s", request.query)
 
     try:
-        # 1. Respuesta del orquestador
+        # 1. Respuesta del orquestador (con enriquecimiento web opcional)
         logger.info("Step 1: Getting orchestrator response with conversation context...")
-        orchestrator_response = await get_orchestrator_response(request.query, conversation_history)
+        enriched_query = request.query
+        q_lower = request.query.lower()
+        if ("http://" in q_lower or "https://" in q_lower) or any(k in q_lower for k in ["noticia", "hoy", "último", "precio", "web"]):
+            try:
+                url = None
+                for token in request.query.split():
+                    if token.startswith("http://") or token.startswith("https://"):
+                        url = token
+                        break
+                if url:
+                    web_data = await fetch_url_text(url)
+                    status_raw = web_data.get("status_code")
+                    try:
+                        status_code = int(status_raw) if isinstance(status_raw, (int, float, str)) else 0
+                    except (TypeError, ValueError):
+                        status_code = 0
+
+                    if status_code < 400:
+                        snippet = str(web_data.get("content_snippet") or "")[:1500]
+                        enriched_query = f"Contexto web:\n{snippet}\n\nPregunta:\n{request.query}"
+            except Exception as exc:
+                logger.warning("Web context enrichment failed: %s", exc)
+
+        orchestrator_response = await get_orchestrator_response(enriched_query, conversation_history)
         logger.info("Orchestrator response received: %s...", orchestrator_response[:100] if orchestrator_response else "EMPTY")
 
         # 2. Consultar agentes si está habilitado
@@ -260,7 +286,7 @@ async def process_query(request: QueryRequest) -> QueryResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-async def get_orchestrator_response(query: str, conversation_history: list = []) -> str:
+async def get_orchestrator_response(query: str, conversation_history: Optional[List[Dict[str, Any]]] = None) -> str:
     """Genera respuesta del orquestador usando su propio modelo con contexto de conversación."""
     logger.info("Getting orchestrator response...")
 
@@ -269,7 +295,7 @@ async def get_orchestrator_response(query: str, conversation_history: list = [])
     options = orchestrator_config.get("options", {"temperature": 0.7, "num_predict": 200})
 
     context = system_prompt
-    if conversation_history and len(conversation_history) > 0:
+    if conversation_history:
         context += "\n\nHistorial de conversación:"
         for msg in conversation_history[-6:]:  # Last 3 exchanges
             role = "Usuario" if msg.get("role") == "user" else "Asistente"
