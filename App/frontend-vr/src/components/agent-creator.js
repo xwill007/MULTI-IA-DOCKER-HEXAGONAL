@@ -297,15 +297,32 @@ AFRAME.registerComponent('agent-creator', {
         
         this.updateStatus('Creating agent...', '#2196F3');
         
-        this.el.emit('agent-create-requested', agentData);
-        
-        setTimeout(() => {
-            this.updateStatus('Agent created successfully!', '#4CAF50');
+        // Escuchar confirmación del backend
+        const successHandler = (e) => {
+            this.updateStatus(`Agent "${e.detail.name}" created!`, '#4CAF50');
             setTimeout(() => {
                 this.resetForm();
                 this.toggle();
             }, 1500);
-        }, 1000);
+        };
+        
+        const errorHandler = (e) => {
+            this.updateStatus(`Error: ${e.detail.message}`, '#F44336');
+        };
+        
+        this.el.addEventListener('agent-create-success', successHandler, { once: true });
+        this.el.addEventListener('agent-create-error', errorHandler, { once: true });
+        
+        // Timeout de seguridad (10 segundos)
+        setTimeout(() => {
+            this.el.removeEventListener('agent-create-success', successHandler);
+            this.el.removeEventListener('agent-create-error', errorHandler);
+            if (this.statusText.getAttribute('value') === 'Creating agent...') {
+                this.updateStatus('Timeout: Check connection', '#FF9800');
+            }
+        }, 10000);
+        
+        this.el.emit('agent-create-requested', agentData);
     },
     
     cancel: function() {

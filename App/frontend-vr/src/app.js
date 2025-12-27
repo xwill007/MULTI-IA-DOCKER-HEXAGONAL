@@ -539,9 +539,23 @@ class VRApp {
             const newAgent = await this.stateManager.createAgent(agentData);
             this.showSimpleNotification(`Agent "${agentData.name}" created`, 'success');
             log('Agent created:', newAgent);
+            
+            // Emitir evento de éxito para agent-creator
+            if (this.agentCreator) {
+                this.agentCreator.dispatchEvent(new CustomEvent('agent-create-success', {
+                    detail: { name: agentData.name, agent: newAgent }
+                }));
+            }
         } catch (error) {
             this.showSimpleNotification('Failed to create agent', 'error');
             log.error('Create agent error:', error);
+            
+            // Emitir evento de error para agent-creator
+            if (this.agentCreator) {
+                this.agentCreator.dispatchEvent(new CustomEvent('agent-create-error', {
+                    detail: { message: error.message || 'Unknown error' }
+                }));
+            }
         }
     }
     

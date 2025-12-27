@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .schemas import Agent, CreateAgentRequest
 
@@ -74,6 +74,13 @@ def load_agents() -> None:
             logger.info("Created default agents file")
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("Failed to load agents: %s", exc)
+
+
+def list_agents() -> List[Agent]:
+    """Return the current list of agents from the in-memory store.
+    This ensures callers always read the up-to-date dictionary managed here.
+    """
+    return list(agents_db.values())
 
 
 def save_agents() -> None:

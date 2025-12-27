@@ -130,9 +130,12 @@ class APIClient {
      * Crear un nuevo agente
      */
     async createAgent(agentData) {
-        log('Creating agent:', agentData);
+        const logMsg = `Creating agent: ${JSON.stringify(agentData)}`;
+        log(logMsg);
+        this.addLog(`[APIClient] ${logMsg}`);
         
         if (CONFIG.MOCK_MODE) {
+            this.addLog('[APIClient] MOCK_MODE active - agent will NOT be persisted');
             await this.simulateDelay(1000);
             const newAgent = {
                 id: `agent-${Date.now()}`,
@@ -141,11 +144,15 @@ class APIClient {
                 created_at: new Date().toISOString()
             };
             log('Mock agent created:', newAgent);
+            this.addLog(`[APIClient] Mock agent created: ${newAgent.id}`);
             return newAgent;
         }
         
         try {
-            const response = await this.fetchWithRetry(`${this.baseURL}/agents`, {
+            const url = `${this.baseURL}/agents`;
+            this.addLog(`[APIClient] POST ${url}`);
+            
+            const response = await this.fetchWithRetry(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -153,11 +160,17 @@ class APIClient {
                 body: JSON.stringify(agentData)
             });
             
+            this.addLog(`[APIClient] Response status: ${response.status} ${response.statusText}`);
+            
             const data = await response.json();
             log('Agent created:', data);
+            this.addLog(`[APIClient] Agent created successfully: ${JSON.stringify(data)}`);
+            
             return data;
         } catch (error) {
-            log.error('Failed to create agent:', error);
+            const errorMsg = `Failed to create agent: ${error.message}`;
+            log.error(errorMsg, error);
+            this.addLog(`[APIClient] ERROR: ${errorMsg}`);
             this.emit('error', error.message);
             throw error;
         }

@@ -101,16 +101,12 @@ class StateManager {
         
         try {
             const newAgent = await this.apiClient.createAgent(agentData);
+            log('Agent created successfully:', newAgent);
             
-            // Agregar a la lista local
-            const updatedAgents = [...this.state.agents, newAgent];
+            // Recargar todos los agentes desde el backend para asegurar consistencia
+            // Esto garantiza que el agente esté persistido correctamente
+            await this.loadAgents();
             
-            this.updateState({
-                agents: updatedAgents,
-                loading: false
-            });
-            
-            log('Agent created successfully');
             return newAgent;
         } catch (error) {
             log.error('Failed to create agent:', error);
