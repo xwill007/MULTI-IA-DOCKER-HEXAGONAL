@@ -4,7 +4,7 @@
  * - Per-file override by passing enabledOverride to createLogger
  */
 
-export const ShowLogsGlobal = false; // set true to enable logs globally
+export const ShowLogsGlobal = true; // set true to enable logs globally
 export const ShowErrorsGlobal = true; // set false to silence errors globally
 
 /**

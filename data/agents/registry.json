@@ -1,0 +1,115 @@
+{
+  "agent-001": {
+    "id": "agent-001",
+    "name": "Code Analyzer",
+    "model": "codellama",
+    "status": "active",
+    "capabilities": [
+      "code_analysis",
+      "quality_check",
+      "refactoring"
+    ],
+    "endpoint": "http://ollama:11434",
+    "config": {
+      "prompt": "Eres un experto en Trading de Criptomonedas. Proporciona predicciones de compra y venta basandote en calculos matematicos estadisticos, solicita lo que te falte para una prediccion mas acertada.",
+      "options": {
+        "temperature": 0.5,
+        "num_predict": 150
+      }
+    },
+    "internet_access": false,
+    "allowed_domains": [
+      "localhost",
+      "127.0.0.1"
+    ],
+    "target_urls": [],
+    "search_terms": []
+  },
+  "agent-002": {
+    "id": "agent-002",
+    "name": "Data Analyst",
+    "model": "mistral",
+    "status": "active",
+    "capabilities": [
+      "data_analysis",
+      "statistics",
+      "visualization"
+    ],
+    "endpoint": "http://ollama:11434",
+    "config": {
+      "prompt": "Eres un analista de datos Historicos especializado. Enfócate en análisis de tendencias repetitivas en los valores de criptomonedas que permita predecir valores futuros o desiciones de compra y venta.",
+      "options": {
+        "temperature": 0.7,
+        "num_predict": 150
+      }
+    },
+    "internet_access": false,
+    "allowed_domains": [
+      "localhost",
+      "127.0.0.1"
+    ],
+    "target_urls": [],
+    "search_terms": []
+  },
+  "agent-003": {
+    "id": "agent-003",
+    "name": "Conversation Agent",
+    "model": "llama3.2",
+    "status": "active",
+    "capabilities": [
+      "conversation",
+      "general_knowledge",
+      "coordination"
+    ],
+    "endpoint": "http://ollama:11434",
+    "config": {
+      "prompt": "Eres un investigador de noticias para identificar cambios de precios en Criptomonedas. Proporciona sugerencias de compra y venta basandote en hechos actuales.",
+      "options": {
+        "temperature": 0.7,
+        "num_predict": 150
+      }
+    },
+    "internet_access": true,
+    "allowed_domains": [
+      "localhost",
+      "127.0.0.1"
+    ],
+    "target_urls": [],
+    "search_terms": []
+  },
+  "agent-004": {
+    "id": "agent-004",
+    "name": "Investigador",
+    "model": "llama3.2",
+    "status": "active",
+    "capabilities": [
+      "research",
+      "news_analysis",
+      "trend_detection"
+    ],
+    "endpoint": "http://ollama:11434",
+    "config": {
+      "prompt": "Eres un investigador de noticias para identificar cambios de precios en Criptomonedas. Proporciona sugerencias de compra y venta basandote en hechos actuales.",
+      "options": {
+        "temperature": 0.7,
+        "num_predict": 150
+      }
+    },
+    "internet_access": true,
+    "allowed_domains": [
+      "coindesk.com",
+      "cointelegraph.com",
+      "localhost",
+      "127.0.0.1"
+    ],
+    "target_urls": [
+      "https://www.coindesk.com/"
+    ],
+    "search_terms": [
+      "bitcoin",
+      "btc",
+      "crypto",
+      "inversión"
+    ]
+  }
+}

@@ -4,7 +4,7 @@ import { createLogger } from '../utils/logs.js';
 import { getAgentPromptInfo } from '../utils/agent-prompts.js';
 
 // Per-file logging control (undefined = use global)
-const ShowLogs = undefined;
+const ShowLogs = true;
 const log = createLogger('[Agent Sphere]', ShowLogs);
 
 /**
@@ -308,12 +308,13 @@ AFRAME.registerComponent('agent-sphere', {
             easing: 'easeInOutQuad'
         });
         
-        this.el.emit('agent-selected', {
-            agentId: this.data.agentId,
-            agentName: this.data.agentName,
-            model: this.data.model,
-            status: this.data.status
-        });
+        // COMENTADO: Este evento causaba refresh de todos los agentes
+        // this.el.emit('agent-selected', {
+        //     agentId: this.data.agentId,
+        //     agentName: this.data.agentName,
+        //     model: this.data.model,
+        //     status: this.data.status
+        // });
 
         // Mostrar panel de configuración junto a la esfera
         this.showConfigPanel();
@@ -330,52 +331,125 @@ AFRAME.registerComponent('agent-sphere', {
     },
 
     showConfigPanel: function() {
+        log('showConfigPanel called');
+        
         // Eliminar panel previo
         const existing = this.el.querySelector('.agent-config-panel');
-        if (existing) existing.parentNode.removeChild(existing);
+        if (existing) {
+            log('Removing existing panel');
+            existing.parentNode.removeChild(existing);
+        }
 
+        log('Creating new config panel');
         const panel = document.createElement('a-entity');
         panel.setAttribute('class', 'agent-config-panel');
-        panel.setAttribute('position', '0 -1.6 0');
+        panel.setAttribute('position', '1.5 0 0');
+        panel.setAttribute('rotation', '0 0 0');
 
         const bg = document.createElement('a-plane');
-        bg.setAttribute('width', 2.2);
-        bg.setAttribute('height', 1.4);
+        bg.setAttribute('width', 3.0);  // Más ancho para más campos
+        bg.setAttribute('height', 2.5);  // Más alto
         bg.setAttribute('color', '#121212');
         bg.setAttribute('opacity', 0.9);
+        bg.setAttribute('material', 'side: double');
         panel.appendChild(bg);
 
         const title = document.createElement('a-text');
         title.setAttribute('value', 'Configurar agente');
         title.setAttribute('align', 'center');
-        title.setAttribute('position', '0 0.55 0.01');
+        title.setAttribute('position', '0 1.15 0.01');
         title.setAttribute('color', '#FFFFFF');
-        title.setAttribute('width', 2.0);
+        title.setAttribute('width', 2.8);
+        title.setAttribute('side', 'double');
         panel.appendChild(title);
 
-        // Mostrar parámetros actuales
+        // Obtener datos actuales del agente
         const info = getAgentPromptInfo(this.data.model);
-        const conf = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === this.data.agentId)?.config || {};
+        const agentData = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === this.data.agentId) || {};
+        const conf = agentData.config || {};
         const current = {
             prompt: conf.prompt || info.prompt,
             temperature: (conf.options && conf.options.temperature) || info.temperature || 0.7,
-            num_predict: (conf.options && conf.options.num_predict) || info.num_predict || 150
+            num_predict: (conf.options && conf.options.num_predict) || info.num_predict || 150,
+            internet_access: agentData.internet_access || false,
+            allowed_domains: agentData.allowed_domains || [],
+            target_urls: agentData.target_urls || [],
+            search_terms: agentData.search_terms || []
         };
+
+        // Sección: Parámetros LLM
+        const llmSection = document.createElement('a-text');
+        llmSection.setAttribute('value', '=== LLM Config ===');
+        llmSection.setAttribute('align', 'center');
+        llmSection.setAttribute('position', '0 0.85 0.01');
+        llmSection.setAttribute('color', '#FFD700');
+        llmSection.setAttribute('width', 2.5);
+        llmSection.setAttribute('side', 'double');
+        panel.appendChild(llmSection);
+
         const text = document.createElement('a-text');
-        text.setAttribute('value', `temp: ${current.temperature}\nnum_predict: ${current.num_predict}`);
-        text.setAttribute('align', 'left');
-        text.setAttribute('position', '-1 0.25 0.01');
+        text.setAttribute('value', `temp: ${current.temperature} | num_predict: ${current.num_predict}`);
+        text.setAttribute('align', 'center');
+        text.setAttribute('position', '0 0.65 0.01');
         text.setAttribute('color', '#CCCCCC');
-        text.setAttribute('width', 2.0);
+        text.setAttribute('width', 2.8);
+        text.setAttribute('side', 'double');
         panel.appendChild(text);
 
         const promptLabel = document.createElement('a-text');
-        promptLabel.setAttribute('value', `Prompt: ${(current.prompt || '').slice(0, 140)}...`);
+        promptLabel.setAttribute('value', `Prompt: ${(current.prompt || '').slice(0, 80)}...`);
         promptLabel.setAttribute('align', 'left');
-        promptLabel.setAttribute('position', '-1 -0.05 0.01');
+        promptLabel.setAttribute('position', '-1.4 0.4 0.01');
         promptLabel.setAttribute('color', '#CCCCCC');
-        promptLabel.setAttribute('width', 2.0);
+        promptLabel.setAttribute('width', 2.8);
+        promptLabel.setAttribute('side', 'double');
         panel.appendChild(promptLabel);
+
+        // Sección: Web Connector
+        const webSection = document.createElement('a-text');
+        webSection.setAttribute('value', '=== Web Connector ===');
+        webSection.setAttribute('align', 'center');
+        webSection.setAttribute('position', '0 0.1 0.01');
+        webSection.setAttribute('color', '#4CAF50');
+        webSection.setAttribute('width', 2.5);
+        webSection.setAttribute('side', 'double');
+        panel.appendChild(webSection);
+
+        const internetStatus = document.createElement('a-text');
+        internetStatus.setAttribute('value', `Internet: ${current.internet_access ? 'ON' : 'OFF'}`);
+        internetStatus.setAttribute('align', 'center');
+        internetStatus.setAttribute('position', '0 -0.1 0.01');
+        internetStatus.setAttribute('color', current.internet_access ? '#4CAF50' : '#F44336');
+        internetStatus.setAttribute('width', 2.5);
+        internetStatus.setAttribute('side', 'double');
+        panel.appendChild(internetStatus);
+
+        const domainsInfo = document.createElement('a-text');
+        domainsInfo.setAttribute('value', `Domains: ${current.allowed_domains.length}`);
+        domainsInfo.setAttribute('align', 'left');
+        domainsInfo.setAttribute('position', '-1.4 -0.3 0.01');
+        domainsInfo.setAttribute('color', '#AAAAAA');
+        domainsInfo.setAttribute('width', 2.8);
+        domainsInfo.setAttribute('side', 'double');
+        panel.appendChild(domainsInfo);
+
+        const urlsInfo = document.createElement('a-text');
+        urlsInfo.setAttribute('value', `URLs: ${current.target_urls.length}`);
+        urlsInfo.setAttribute('align', 'left');
+        urlsInfo.setAttribute('position', '-1.4 -0.5 0.01');
+        urlsInfo.setAttribute('color', '#AAAAAA');
+        urlsInfo.setAttribute('width', 2.8);
+        urlsInfo.setAttribute('side', 'double');
+        panel.appendChild(urlsInfo);
+
+        const termsInfo = document.createElement('a-text');
+        termsInfo.setAttribute('value', `Search terms: ${current.search_terms.length}`);
+        termsInfo.setAttribute('align', 'left');
+        termsInfo.setAttribute('position', '-1.4 -0.7 0.01');
+        termsInfo.setAttribute('color', '#AAAAAA');
+        termsInfo.setAttribute('width', 2.8);
+        termsInfo.setAttribute('side', 'double');
+        panel.appendChild(termsInfo);
 
         // Guardar referencia al componente al inicio
         const component = this;
@@ -386,6 +460,7 @@ AFRAME.registerComponent('agent-sphere', {
         editBg.setAttribute('width', 0.8);
         editBg.setAttribute('height', 0.25);
         editBg.setAttribute('color', '#FF9800');
+        editBg.setAttribute('material', 'side: double');
         editBg.setAttribute('class', 'clickable interactive');
         editBtn.appendChild(editBg);
         const editText = document.createElement('a-text');
@@ -394,8 +469,9 @@ AFRAME.registerComponent('agent-sphere', {
         editText.setAttribute('position', '0 0 0.01');
         editText.setAttribute('color', '#000');
         editText.setAttribute('width', 0.7);
+        editText.setAttribute('side', 'double');
         editBtn.appendChild(editText);
-        editBtn.setAttribute('position', '-0.8 -0.5 0.02');
+        editBtn.setAttribute('position', '-1 -0.95 0.02');
         panel.appendChild(editBtn);
 
         // Botón activar/desactivar
@@ -407,6 +483,7 @@ AFRAME.registerComponent('agent-sphere', {
         toggleBg.setAttribute('width', 0.8);
         toggleBg.setAttribute('height', 0.25);
         toggleBg.setAttribute('color', toggleColor);
+        toggleBg.setAttribute('material', 'side: double');
         toggleBg.setAttribute('class', 'clickable interactive');
         toggleBtn.appendChild(toggleBg);
         const toggleText = document.createElement('a-text');
@@ -415,32 +492,34 @@ AFRAME.registerComponent('agent-sphere', {
         toggleText.setAttribute('position', '0 0 0.01');
         toggleText.setAttribute('color', '#FFF');
         toggleText.setAttribute('width', 0.7);
+        toggleText.setAttribute('side', 'double');
         toggleBtn.appendChild(toggleText);
-        toggleBtn.setAttribute('position', '0 -0.5 0.02');
+        toggleBtn.setAttribute('position', '1 -0.95 0.02');
         panel.appendChild(toggleBtn);
 
-        // Botón cerrar
+        // Botón cerrar (X en esquina superior derecha)
         const closeBtn = document.createElement('a-entity');
         const closeBg = document.createElement('a-plane');
-        closeBg.setAttribute('width', 0.8);
-        closeBg.setAttribute('height', 0.25);
-        closeBg.setAttribute('color', '#9E9E9E');
+        closeBg.setAttribute('width', 0.3);
+        closeBg.setAttribute('height', 0.3);
+        closeBg.setAttribute('color', '#F44336');
+        closeBg.setAttribute('material', 'side: double');
         closeBg.setAttribute('class', 'clickable interactive');
         closeBtn.appendChild(closeBg);
         const closeText = document.createElement('a-text');
-        closeText.setAttribute('value', 'CERRAR');
+        closeText.setAttribute('value', 'X');
         closeText.setAttribute('align', 'center');
         closeText.setAttribute('position', '0 0 0.01');
-        closeText.setAttribute('color', '#000');
-        closeText.setAttribute('width', 0.7);
+        closeText.setAttribute('color', '#FFF');
+        closeText.setAttribute('width', 0.8);
+        closeText.setAttribute('side', 'double');
         closeBtn.appendChild(closeText);
-        closeBtn.setAttribute('position', '0.8 -0.5 0.02');
+        closeBtn.setAttribute('position', '1.55 0.85 0.02');  // Esquina superior derecha
         
-        // Event listener para CERRAR button - en el closeBg (el a-plane)
+        // Event listener para CERRAR button
         closeBg.addEventListener('click', (evt) => {
             log('Close button clicked via closeBg');
             evt.stopPropagation();
-            // Remover el panel directamente
             const panelToRemove = component.el.querySelector('.agent-config-panel');
             if (panelToRemove) {
                 component.el.removeChild(panelToRemove);
@@ -450,39 +529,96 @@ AFRAME.registerComponent('agent-sphere', {
         
         panel.appendChild(closeBtn);
 
-        // Eventos - agregar listeners de editar y toggle
-        editBtn.addEventListener('click', async () => {
+        // Event listener para EDITAR LLM y Web Connector
+        editBg.addEventListener('click', async (evt) => {
+            log('Edit button clicked');
+            evt.stopPropagation();
             try {
+                // Obtener datos actuales del agente completo
+                const currentAgent = (window.vrApp?.stateManager?.state?.agents || []).find(a => a.id === component.data.agentId);
+                
+                // Prompts para parámetros LLM
                 const nt = parseFloat(prompt('Nueva temperatura (0-1):', String(current.temperature)) || String(current.temperature));
                 const np = parseInt(prompt('Nuevo num_predict:', String(current.num_predict)) || String(current.num_predict), 10);
                 const pr = prompt('Nuevo prompt:', current.prompt) || current.prompt;
-                const config = { prompt: pr, options: { temperature: nt, num_predict: np } };
+                
+                // Prompts para Web Connector
+                const allowedDomains = (prompt('Dominios permitidos (separados por coma):', (currentAgent?.allowed_domains || []).join(', ')) || '').split(',').map(d => d.trim()).filter(d => d);
+                const targetUrls = (prompt('URLs objetivo (separadas por coma):', (currentAgent?.target_urls || []).join(', ')) || '').split(',').map(u => u.trim()).filter(u => u);
+                const searchTerms = (prompt('Términos de búsqueda (separados por coma):', (currentAgent?.search_terms || []).join(', ')) || '').split(',').map(t => t.trim()).filter(t => t);
+                
+                // Pregunta de internet access al final con texto ON/OFF o TRUE/FALSE
+                const currentInternetStatus = currentAgent?.internet_access ? 'ON' : 'OFF';
+                const internetInput = (prompt(`Acceso a internet (ON/OFF o TRUE/FALSE):`, currentInternetStatus) || currentInternetStatus).toUpperCase();
+                const internetAccess = internetInput === 'ON' || internetInput === 'TRUE';
+                
+                // Construir payload completo
+                const updatePayload = {
+                    name: component.data.agentName,
+                    config: { prompt: pr, options: { temperature: nt, num_predict: np } },
+                    internet_access: internetAccess,
+                    allowed_domains: allowedDomains,
+                    target_urls: targetUrls,
+                    search_terms: searchTerms
+                };
+                
                 const sm = window.vrApp && window.vrApp.stateManager;
                 if (sm) {
-                    await sm.updateAgentConfig(component.data.agentId, config);
-                    // Regenerar textura
-                    const canvas = component.createPromptCanvas({
-                        name: component.data.agentName,
-                        model: component.data.model,
-                        prompt: pr,
-                        temperature: nt,
-                        num_predict: np,
-                        color: component.modelColor
-                    });
-                    component.sphere.setAttribute('material', { src: canvas, shader: 'standard' });
-                    text.setAttribute('value', `temp: ${nt}\nnum_predict: ${np}`);
-                    promptLabel.setAttribute('value', `Prompt: ${(pr || '').slice(0, 140)}...`);
+                    // Actualizar via API
+                    const apiClient = sm.apiClient;
+                    if (apiClient) {
+                        const response = await fetch(`${apiClient.baseURL}/agents/${component.data.agentId}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(updatePayload)
+                        });
+                        
+                        if (response.ok) {
+                            const updatedAgent = await response.json();
+                            log('Agent updated successfully:', updatedAgent);
+                            
+                            // Actualizar estado local
+                            const agents = sm.state.agents.map(a => {
+                                if (a.id === component.data.agentId) {
+                                    return updatedAgent;
+                                }
+                                return a;
+                            });
+                            sm.updateState({ agents });
+                            
+                            // Regenerar textura
+                            const canvas = component.createPromptCanvas({
+                                name: component.data.agentName,
+                                model: component.data.model,
+                                prompt: pr,
+                                temperature: nt,
+                                num_predict: np,
+                                color: component.modelColor
+                            });
+                            component.sphere.setAttribute('material', { src: canvas, shader: 'standard' });
+                            
+                            // Actualizar displays
+                            text.setAttribute('value', `temp: ${nt}\nnum_predict: ${np}`);
+                            promptLabel.setAttribute('value', `Prompt: ${(pr || '').slice(0, 140)}...`);
+                            internetText.setAttribute('value', internetAccess ? 'Internet: ON' : 'Internet: OFF');
+                            domainsText.setAttribute('value', `Domains: ${allowedDomains.length}`);
+                            urlsText.setAttribute('value', `URLs: ${targetUrls.length}`);
+                            termsText.setAttribute('value', `Search terms: ${searchTerms.length}`);
+                        }
+                    }
                 }
             } catch (e) {
-                console.error('Failed updating config', e);
+                console.error('Failed updating agent', e);
             }
         });
 
         // Guardar referencia al panel
         component.configPanel = panel;
 
-        // Toggle status event
-        toggleBtn.addEventListener('click', async () => {
+        // Toggle status event - listener en toggleBg
+        toggleBg.addEventListener('click', async (evt) => {
+            log('Toggle button clicked');
+            evt.stopPropagation();
             try {
                 const sm = window.vrApp && window.vrApp.stateManager;
                 if (sm) {
@@ -533,7 +669,9 @@ AFRAME.registerComponent('agent-sphere', {
             }
         });
 
+        log('Appending panel to agent sphere element');
         this.el.appendChild(panel);
+        log('Panel appended successfully, childCount:', this.el.children.length);
     },
     
     remove: function() {

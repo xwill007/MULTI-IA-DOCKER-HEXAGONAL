@@ -4,13 +4,14 @@ import './components/status-message.js';
 import './components/query-panel.js';
 import './components/agent-creator.js';
 import './components/conversation-history.js';
+import './components/agents-manager.js';
 import CONFIG from './config.js';
 import { showNotification } from './utils/helpers.js';
 import StateManager from './services/state-manager.js';
 import { createLogger } from './utils/logs.js';
 
 // Per-file logging override; set to true/false to force, or undefined to use global
-const ShowLogs = undefined;
+const ShowLogs = true;
 const log = createLogger('[VRApp]', ShowLogs);
 
 /**
@@ -144,6 +145,18 @@ class VRApp {
             this.scene.addEventListener('agent-selected', (e) => {
                 this.handleAgentSelect(e.detail);
             });
+
+            // Agents updated (after import/reload/refresh)
+            this.scene.addEventListener('agents-updated', async (e) => {
+                log('Agents updated event received, reloading state manager...');
+                try {
+                    await this.stateManager.loadAgents();
+                    this.showSimpleNotification('Agents refreshed', 'success');
+                } catch (error) {
+                    log.error('Failed to refresh agents:', error);
+                    this.showSimpleNotification('Failed to refresh agents', 'error');
+                }
+            });
         }
         
         // Keyboard shortcuts (desktop only)
@@ -169,12 +182,14 @@ class VRApp {
      */
     onStateChange(state) {
         log('State changed:', state);
+        log(`Current agents count: ${state.agents ? state.agents.length : 0}`);
         
         // Update connection status
         this.updateConnectionStatus(state.connected);
         
         // Update agents visualization
         if (state.agents) {
+            log(`Rendering ${state.agents.length} agents in VR scene`);
             this.updateAgentsVisualization(state.agents);
         }
         
@@ -205,30 +220,24 @@ class VRApp {
             return;
         }
         
-        log(`Updating ${agents.length} agents`);
+        log(`Updating ${agents.length} agents (current: ${this.agentElements.size})`);
         
-        const currentAgentIds = new Set(agents.map(a => a.id));
-        
-        // Remover agentes que ya no existen
-        this.agentElements.forEach((element, agentId) => {
-            if (!currentAgentIds.has(agentId)) {
-                const component = element.components['agent-sphere'];
-                if (component && component.remove) {
-                    component.remove();
-                } else {
+        // Remover todos los agentes actuales
+        this.agentElements.forEach((element) => {
+            try {
+                element.remove();
+            } catch (e) {
+                if (element.parentNode) {
                     element.parentNode.removeChild(element);
                 }
-                this.agentElements.delete(agentId);
             }
         });
+        this.agentElements.clear();
         
-        // Agregar o actualizar agentes
+        // Agregar nuevos agentes desde cero
         agents.forEach((agent, index) => {
-            let agentElement = this.agentElements.get(agent.id);
-            
-            if (!agentElement) {
-                // Crear nuevo agente
-                agentElement = document.createElement('a-entity');
+            try {
+                const agentElement = document.createElement('a-entity');
                 agentElement.setAttribute('agent-sphere', {
                     agentId: agent.id,
                     agentName: agent.name,
@@ -241,21 +250,13 @@ class VRApp {
                 this.agentsContainer.appendChild(agentElement);
                 this.agentElements.set(agent.id, agentElement);
                 
-                log(`Created agent: ${agent.name}`);
-                
-            } else {
-                // Actualizar agente existente
-                const component = agentElement.components['agent-sphere'];
-                if (component && component.updateStatus) {
-                    component.updateStatus(agent.status || 'idle');
-                }
-                // Actualizar orbit parameters
-                agentElement.setAttribute('agent-sphere', {
-                    orbitIndex: index,
-                    orbitTotal: agents.length
-                });
+                log(`Created/Updated agent: ${agent.name} (${index + 1}/${agents.length})`);
+            } catch (e) {
+                log.error(`Failed to create agent ${agent.id}:`, e);
             }
         });
+        
+        log(`Visualization updated: ${this.agentElements.size} agents rendered`);
     }
     
     /**
@@ -589,8 +590,26 @@ class VRApp {
                 this.agentCreator.components['agent-creator'].toggle();
             }
         }
+
+        // M - Toggle agents manager
+        if (event.key === 'm' || event.key === 'M') {
+            const agentsManager = document.querySelector('#agents-manager');
+            if (agentsManager && agentsManager.components['agents-manager']) {
+                agentsManager.components['agents-manager'].toggleVisibility();
+            }
+        }
+
+        // R - Refresh agents
+        if (event.key === 'r' || event.key === 'R') {
+            log('Refresh agents requested via keyboard');
+            this.stateManager.loadAgents().then(() => {
+                this.showSimpleNotification('Agents refreshed', 'success');
+            }).catch((error) => {
+                this.showSimpleNotification('Refresh failed', 'error');
+            });
+        }
         
-        // R - Reload agents
+        // H - Reload from file
         if (event.key === 'r' || event.key === 'R') {
             this.stateManager.loadAgents();
             this.showSimpleNotification('Reloading agents...', 'info');

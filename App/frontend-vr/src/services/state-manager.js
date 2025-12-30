@@ -2,7 +2,7 @@ import APIClient from './api-client.js';
 import { createLogger } from '../utils/logs.js';
 
 // Control de logs para este servicio (undefined = usa global)
-const ShowLogs = undefined;
+const ShowLogs = true;
 const log = createLogger('[StateManager]', ShowLogs);
 
 /**

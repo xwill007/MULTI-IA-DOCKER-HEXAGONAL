@@ -22,7 +22,29 @@ AFRAME.registerComponent('query-panel', {
         // Almacenar botones para detección de mouse
         this.buttons = [];
         
-        // Botón para crear nuevo agente (primero)
+        // Botón para refrescar lista de agentes (primero, arriba de todo)
+        const refreshAgentsButton = this.createButton(
+            'REFRESH AGENTS',
+            { x: 0, y: 1.2, z: 0.01 },
+            () => this.refreshAgents(),
+            '#9C27B0',
+            data.width - 0.4
+        );
+        el.appendChild(refreshAgentsButton);
+        this.buttons.push(refreshAgentsButton);
+        
+        // Botón para verificar sincronización de agentes
+        const syncStatusButton = this.createButton(
+            'SYNC STATUS',
+            { x: 0, y: 1.0, z: 0.01 },
+            () => this.checkSyncStatus(),
+            '#2196F3',
+            data.width - 0.4
+        );
+        el.appendChild(syncStatusButton);
+        this.buttons.push(syncStatusButton);
+        
+        // Botón para crear nuevo agente
         const createAgentButton = this.createButton(
             'CREAR AGENTE',
             { x: 0, y: 0.8, z: 0.01 },
@@ -405,6 +427,63 @@ AFRAME.registerComponent('query-panel', {
             console.error('[Query Panel] Agent creator panel not found');
             this.updateStatus('Error: Panel no encontrado', '#F44336');
         }
+    },
+
+    refreshAgents: function() {
+        log('Refresh agents requested');
+        this.updateStatus('Refreshing agents...', '#9C27B0');
+        
+        if (window.vrApp && window.vrApp.stateManager) {
+            window.vrApp.stateManager.loadAgents().then(() => {
+                this.updateStatus('✓ Agents refreshed', '#4CAF50');
+                log('Agents refreshed successfully');
+                setTimeout(() => {
+                    this.updateStatus('', '#888888');
+                }, 2000);
+            }).catch((error) => {
+                this.updateStatus('✗ Refresh failed', '#F44336');
+                log.error('Refresh error:', error);
+                setTimeout(() => {
+                    this.updateStatus('', '#888888');
+                }, 2000);
+            });
+        } else {
+            this.updateStatus('Error: App not initialized', '#F44336');
+        }
+    },
+    
+    checkSyncStatus: function() {
+        log('Check sync status requested');
+        this.updateStatus('Checking sync...', '#2196F3');
+        
+        const apiBase = CONFIG.API_BASE_URL || 'http://localhost:8000';
+        
+        fetch(`${apiBase}/agents/sync`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.synced) {
+                    const msg = `✓ Synced: ${data.agents_in_memory} agents`;
+                    this.updateStatus(msg, '#4CAF50');
+                    log(`Sync status: ${msg}`);
+                } else if (data.success && !data.synced) {
+                    const msg = `⚠ Mismatch: Mem=${data.agents_in_memory} File=${data.agents_in_file}`;
+                    this.updateStatus(msg, '#FF9800');
+                    log(`Sync warning: ${msg}`, data);
+                } else {
+                    this.updateStatus('✗ Sync check failed', '#F44336');
+                    log.error('Sync check error:', data);
+                }
+                setTimeout(() => {
+                    this.updateStatus('', '#888888');
+                }, 3000);
+            })
+            .catch((error) => {
+                this.updateStatus('✗ API error', '#F44336');
+                log.error('Sync API error:', error);
+                setTimeout(() => {
+                    this.updateStatus('', '#888888');
+                }, 2000);
+            });
     },
     
     updateStatus: function(message, color) {

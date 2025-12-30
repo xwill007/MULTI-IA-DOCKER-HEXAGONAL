@@ -120,3 +120,110 @@ async def reload_agents_from_file() -> Dict[str, Any]:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reload agents: {str(e)}")
+
+
+@router.get("/export", response_model=Dict[str, Any])
+async def export_agents() -> Dict[str, Any]:
+    """
+    Exportar todos los agentes como JSON descargable.
+    Útil para edición local y sincronización.
+    """
+    try:
+        agents = service_list_agents()
+        agents_dict = {a.id: a.dict() for a in agents}
+        return {
+            "timestamp": str(json.dumps({"count": len(agents), "version": "1.0"})),
+            "agents": agents_dict
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export agents: {str(e)}")
+
+
+@router.post("/bulk-update", response_model=Dict[str, Any])
+async def bulk_update_agents(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Importar y sincronizar agentes desde JSON.
+    Recibe dict con estructura: {"agents": {agent_id: agent_data, ...}}
+    Actualiza memoria, archivo y BD.
+    """
+    try:
+        agents_data = payload.get("agents", {})
+        if not isinstance(agents_data, dict):
+            raise ValueError("agents must be a dict")
+
+        updated_count = 0
+        errors = []
+
+        for agent_id, agent_data in agents_data.items():
+            try:
+                # Get existing agent to avoid replacing entirely
+                existing = get_agent(agent_id)
+                
+                # Extract updateable fields from the incoming data
+                update_payload = {
+                    k: v for k, v in agent_data.items()
+                    if k in ["name", "status", "capabilities", "config", "internet_access", "allowed_domains", "target_urls", "search_terms"]
+                }
+
+                if update_payload:
+                    update_agent(agent_id, update_payload)
+                    updated_count += 1
+            except KeyError:
+                errors.append(f"Agent {agent_id} not found")
+            except Exception as e:
+                errors.append(f"Error updating {agent_id}: {str(e)}")
+
+        return {
+            "success": len(errors) == 0,
+            "message": f"Updated {updated_count} agents",
+            "updated_count": updated_count,
+            "errors": errors,
+            "file_path": str(AGENTS_FILE),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to bulk update agents: {str(e)}")
+
+
+@router.post("/sync", response_model=Dict[str, Any])
+async def sync_agents_status() -> Dict[str, Any]:
+    """
+    Verificar y reportar estado de sincronización de agentes.
+    Confirma que agents_db está sincronizado con registry.json
+    """
+    try:
+        agents = service_list_agents()
+        
+        # Verify file persistence
+        file_exists = AGENTS_FILE.exists()
+        file_agents = []
+        if file_exists:
+            try:
+                with open(AGENTS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    file_agents = list(data.keys())
+            except Exception as e:
+                return {
+                    "success": False,
+                    "message": f"Error reading agents file: {str(e)}",
+                    "agents_in_memory": len(agents),
+                    "file_exists": False,
+                    "synced": False
+                }
+        
+        memory_ids = {a.id for a in agents}
+        file_ids = set(file_agents)
+        
+        return {
+            "success": True,
+            "message": "Agents synchronized",
+            "agents_in_memory": len(agents),
+            "agents_in_file": len(file_ids),
+            "file_exists": file_exists,
+            "file_path": str(AGENTS_FILE),
+            "synced": memory_ids == file_ids,
+            "memory_only": list(memory_ids - file_ids),
+            "file_only": list(file_ids - memory_ids),
+            "agent_ids": sorted([a.id for a in agents]),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check sync status: {str(e)}")

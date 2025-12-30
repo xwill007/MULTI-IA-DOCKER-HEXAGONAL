@@ -29,6 +29,9 @@ Orquestador de IAs en arquitectura hexagonal con Docker.
   - ✅ Feedback en tiempo real con eventos frontend-backend
   - ✅ Logs detallados para debugging (`localStorage.getItem('api_debug_logs')`)
   - ✅ Endpoint de verificación `/agents/verify/{id}` para testing
+  - ✅ Endpoint de sincronización `/agents/sync` para verificar estado
+  - ✅ Botón "SYNC STATUS" en VR que consulta estado de sincronización
+  - ✅ Auto-persistencia en `registry.json` al crear/actualizar/importar agentes
 - Integración con Ollama en Docker.
 - UI VR con A-Frame (esferas de agentes + hub central).
 - Manejo de timeouts y reintentos con backoff.
@@ -47,8 +50,21 @@ Orquestador de IAs en arquitectura hexagonal con Docker.
 
 ## Documentación
 
+### Inicio Rápido
 - **[Guía Rápida](Docs/QUICKSTART.md)**: Setup y desarrollo local
 - **[Referencia Rápida](Docs/QUICKREF.md)**: Mapa de arquitectura del proyecto
+
+### Persistencia y Sincronización de Agentes
+- **[Guía de Persistencia](Docs/AGENT_PERSISTENCE_GUIDE.md)**: Cómo se guardan y sincronizan agentes (RECOMENDADO)
+- **[Cheat Sheet de Agentes](Docs/QUICK_REFERENCE_AGENTS.md)**: Comandos rápidos y troubleshooting
+- **[Flowchart de Persistencia](Docs/FLOWCHART_AGENT_PERSISTENCE.md)**: Diagramas ASCII del flujo
+- **[Test Cases](Docs/TEST_CASES_PERSISTENCE.md)**: Suite de pruebas completa
+- **[Changelog de Persistencia](Docs/CHANGELOG_AGENT_PERSISTENCE.md)**: Cambios en esta sesión
+
+### Agentes Avanzado
 - **[Creación de Agentes](Docs/GUIA_CREACION_AGENTES.md)**: Guía completa del flujo de agentes
 - **[Análisis de Agentes](Docs/ANALISIS_CREACION_AGENTES.md)**: Diagnóstico técnico del sistema
+
+### Automatización
 - **[Script de Testing](Scripts/test-agent-creation.ps1)**: Pruebas automatizadas de persistencia
+- **[Script de Persistencia](Scripts/test-agent-persistence.ps1)**: Test suite interactivo (NUEVO)
