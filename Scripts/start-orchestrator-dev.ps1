@@ -103,6 +103,13 @@ if (Test-Path "requirements.txt") {
 # Iniciar servidor
 Write-Host ""
 Write-Host "[5/5] Iniciando servidor FastAPI..." -ForegroundColor White
+
+# Configurar PYTHONPATH para incluir Infrastructure
+$infraPath = Join-Path $PSScriptRoot "..\Infrastructure"
+$infraPathFull = Resolve-Path $infraPath
+$env:PYTHONPATH = "$orchestratorPath;$infraPathFull"
+
+Write-Host "  PYTHONPATH configurado" -ForegroundColor Gray
 Write-Host ""
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host "  ORCHESTRATOR LISTO" -ForegroundColor Green

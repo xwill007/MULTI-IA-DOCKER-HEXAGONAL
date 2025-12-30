@@ -18,10 +18,17 @@ _cache: Dict[str, Dict[str, object]] = {}
 _CACHE_TTL = int(os.getenv("WEB_CACHE_TTL", "300"))
 
 
-def _is_allowed(url: str) -> bool:
+def _is_allowed(url: str, allowed_domains: Optional[list] = None) -> bool:
+    """Verifica si la URL está permitida.
+    
+    Args:
+        url: URL a verificar
+        allowed_domains: Lista opcional de dominios permitidos. Si no se provee, usa DOMAINS_WHITELIST global.
+    """
     try:
         host = url.split("//", 1)[1].split("/", 1)[0]
-        return any(host.startswith(d.strip()) for d in DOMAINS_WHITELIST if d.strip())
+        domains_to_check = allowed_domains if allowed_domains else DOMAINS_WHITELIST
+        return any(host.endswith(d.strip()) or host == d.strip() for d in domains_to_check if d.strip())
     except Exception:
         return False
 
@@ -35,8 +42,13 @@ def _strip_html(html: str, max_len: int = 4000) -> str:
     return text[:max_len]
 
 
-async def fetch_url_text(url: str) -> Dict[str, object]:
+async def fetch_url_text(url: str, allowed_domains: Optional[list] = None) -> Dict[str, object]:
     """Fetch URL and return normalized text snippet. Respects whitelist + timeouts.
+    
+    Args:
+        url: URL a descargar
+        allowed_domains: Lista opcional de dominios permitidos. Si no se provee, usa DOMAINS_WHITELIST global.
+    
     Returns dict with status_code, content_type, content_snippet, fetched_at.
     """
     # Cache check
@@ -47,7 +59,7 @@ async def fetch_url_text(url: str) -> Dict[str, object]:
         if isinstance(exp, datetime) and exp > now:
             return cached["data"]  # type: ignore
 
-    if not _is_allowed(url):
+    if not _is_allowed(url, allowed_domains):
         return {
             "status_code": 451,
             "content_type": None,

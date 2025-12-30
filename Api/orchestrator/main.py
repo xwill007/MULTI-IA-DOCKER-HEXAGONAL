@@ -356,14 +356,96 @@ async def query_agents(query: str) -> List[Dict[str, Any]]:
     return agents_responses
 
 
+def _domain_allowed(url: str, allowed_domains: List[str]) -> bool:
+    """Verifica si el dominio de la URL está en la lista de permitidos."""
+    try:
+        # Extraer host de la URL
+        host = url.split("//", 1)[1].split("/", 1)[0]
+        # Verificar si el host coincide con algún dominio permitido
+        return any(host.endswith(domain.strip()) or host == domain.strip() 
+                   for domain in allowed_domains if domain.strip())
+    except (IndexError, AttributeError):
+        logger.warning("Invalid URL format: %s", url)
+        return False
+
+
+async def _fetch_web_context(agent: Agent, query: str) -> str:
+    """Enriquece el contexto del agente con información de internet.
+    
+    Descarga contenido de target_urls si están configuradas,
+    respetando la whitelist de allowed_domains.
+    """
+    web_snippets = []
+    
+    if not agent.internet_access:
+        return ""
+    
+    logger.info("Fetching web context for agent %s", agent.name)
+    
+    # Estrategia 1: URLs específicas configuradas
+    if agent.target_urls:
+        for url in agent.target_urls:
+            # Verificar si el dominio está permitido
+            if not _domain_allowed(url, agent.allowed_domains):
+                logger.warning("URL %s not in allowed_domains for agent %s", url, agent.name)
+                continue
+            
+            try:
+                logger.info("Fetching URL: %s", url)
+                data = await fetch_url_text(url, agent.allowed_domains)
+                
+                if data.get("status_code") == 200:
+                    snippet = data.get("content_snippet", "")
+                    if snippet:
+                        web_snippets.append(f"Fuente: {url}\n{snippet}")
+                else:
+                    logger.warning("Failed to fetch %s: status %s", url, data.get("status_code"))
+            
+            except Exception as exc:
+                logger.error("Error fetching %s: %s", url, exc)
+                continue
+    
+    # Estrategia 2: Búsqueda con search_terms (futuro: integrar API de búsqueda)
+    # elif agent.search_terms:
+    #     search_query = f"{query} {' '.join(agent.search_terms)}"
+    #     # TODO: Integrar Google/Bing/DuckDuckGo API
+    
+    # Combinar snippets limitando tamaño total
+    if web_snippets:
+        combined = "\n\n---\n\n".join(web_snippets)
+        # Limitar a ~3000 caracteres para no saturar el contexto del LLM
+        return combined[:3000]
+    
+    return ""
+
+
 async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
-    """Consulta a un agente individual usando Ollama."""
+    """Consulta a un agente individual usando Ollama.
+    
+    Si el agente tiene internet_access habilitado, enriquece el prompt
+    con contenido descargado de sus target_urls configuradas.
+    """
     start_time = asyncio.get_event_loop().time()
-    logger.info("Querying agent: %s (%s)", agent.name, agent.model)
+    logger.info("Querying agent: %s (%s) - internet_access: %s", 
+                agent.name, agent.model, agent.internet_access)
 
     conf = agent.config or {}
     system_prompt = conf.get("prompt") or _default_agent_config(agent.model)["prompt"]
     options = conf.get("options") or _default_agent_config(agent.model)["options"]
+
+    # 🌐 Enriquecer con contexto web si está habilitado
+    enriched_query = query
+    if agent.internet_access:
+        try:
+            web_context = await _fetch_web_context(agent, query)
+            if web_context:
+                logger.info("Web context retrieved: %d characters", len(web_context))
+                enriched_query = f"{query}\n\n=== INFORMACIÓN ACTUALIZADA DE INTERNET ===\n{web_context}\n=== FIN DE INFORMACIÓN WEB ==="
+            else:
+                logger.warning("No web content retrieved for agent %s", agent.name)
+        except Exception as exc:
+            logger.error("Failed to fetch web context: %s", exc)
+            # Continuar sin contexto web en caso de error
 
     try:
         timeout = httpx.Timeout(120.0, connect=10.0)
@@ -372,7 +454,7 @@ async def query_single_agent(agent: Agent, query: str) -> Dict[str, Any]:
                 f"{agent.endpoint}/api/generate",
                 json={
                     "model": agent.model,
-                    "prompt": f"{system_prompt}\n\nQuery: {query}\n\nRespuesta:",
+                    "prompt": f"{system_prompt}\n\nQuery: {enriched_query}\n\nRespuesta:",
                     "stream": False,
                     "options": options
                 }
